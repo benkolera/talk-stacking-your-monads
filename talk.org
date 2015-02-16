@@ -1,4 +1,4 @@
-Stacking your Haskell Blocks - Monad Transformers for FP Error Handling & Configuration
+Stacking your Monads - Monad Transformers for FP Error Handling & Configuration
 
 * Me
 ** Dev Team Manager at iseek Communications
