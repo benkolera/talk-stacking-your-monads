@@ -5,7 +5,6 @@ module CsvTests (csvTests) where
 import BasePrelude
 
 import Control.Lens
-import Control.Monad.Except (runExceptT)
 import Data.Time
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -22,12 +21,12 @@ csvTests = testGroup "CsvTests"
 
 ioExceptionTest :: Assertion
 ioExceptionTest = do
-  e <- runExceptT $ readTransactions "idontexisttrolololol"
+  e <- runCsv $ readTransactions "idontexisttrolololol"
   e^?_Left._CsvIoError.to show @?= Just "idontexisttrolololol: openBinaryFile: does not exist (No such file or directory)"
 
 decodeErrorsTest :: Assertion
 decodeErrorsTest = do
-  e <- runExceptT $ readTransactions "tests/csv/broken.csv"
+  e <- runCsv $ readTransactions "tests/csv/broken.csv"
   e @?= Left (CsvDecodeErrors expectedErrors)
   where
     expectedErrors =
@@ -37,7 +36,7 @@ decodeErrorsTest = do
 
 decodeOkTest :: Assertion
 decodeOkTest = do
-  e <- runExceptT $ readTransactions "tests/csv/ok.csv"
+  e <- runCsv $ readTransactions "tests/csv/ok.csv"
   e @?= Right expectedTransactions
   where
     expectedTransactions = Transactions "Bank Account" "Everyday Basics" 12345678

@@ -1,0 +1,24 @@
+Stacking your Haskell Blocks - Monad Transformers for FP Error Handling & Configuration
+
+* Me
+** Dev Team Manager at iseek Communications
+** We build enterprise-grade networks, data centers and cloud infrastructure
+** Lots of little distributed APIs, some written on top of vendor APIs
+** Types and FP help keep us sane
+* Our Journey Tonight
+** Getting rid of exceptions with IO (Either e a)
+** Enter ExceptT & what it means to be a monad transformer
+** ReaderT to weave configuration into our contexts
+** Stacking it all together and hiding the layers
+** Neat effects of the MonadReader/MonadIO/MonadError typeclasses on your code
+* Conclusions & Take aways
+** Why Monad Transformers are useful to stack different monads into one thing.
+** How the mtl classes help you not to care about the exact stack.
+** Get the inklings of how you'd use this in a bigger project.
+* Other Things of mention
+** The Errors Package: Lots of goodies to help you avoid partial functions and emit good errors.
+** AccValidation: Allows you to accumulate all errors rather than terminate at the first.
+** You can do this in scala, too.
+* Useful Resources
+** RWH Ch18: Monad Transformers: http://book.realworldhaskell.org/read/monad-transformers.html
+** RWH Ch19: Error Handling: http://book.realworldhaskell.org/read/error-handling.html

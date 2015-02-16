@@ -1,16 +1,25 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude     #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE TemplateHaskell       #-}
-module Csv where
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TemplateHaskell            #-}
+module Csv
+  ( Csv
+  , CsvError(..)
+  , _CsvIoError
+  , _CsvHeaderParseError
+  , _CsvDecodeErrors
+  , runCsv
+  , readTransactions
+  ) where
 
 import BasePrelude hiding (first, try, words)
 
 import           Control.Error              (headMay, note)
 import           Control.Lens               (makePrisms, (^.))
-import           Control.Monad.Except       (MonadError)
+import           Control.Monad.Except       (ExceptT, MonadError, runExceptT)
 import           Control.Monad.TM           ((.>>=.))
 import           Control.Monad.Trans        (MonadIO)
 import           Data.Bifunctor             (bimap, first)
@@ -26,9 +35,9 @@ import           Data.Validation            (AccValidation, _AccValidation)
 import qualified Data.Vector                as V
 import           System.Locale              (defaultTimeLocale)
 import           Text.Parsec                (alphaNum, anyChar, char, choice,
-                                             digit, getInput, lookAhead, many1,
-                                             manyTill, parse, sepEndBy1, space,
-                                             spaces, string, try)
+                                             digit, lookAhead, many1, manyTill,
+                                             parse, sepEndBy1, space, spaces,
+                                             string, try)
 import           Text.Parsec.Text           (Parser)
 
 import Types hiding (transactionDesc)
@@ -41,10 +50,13 @@ data CsvError
   deriving (Eq,Show)
 makePrisms ''CsvError
 
-readTransactions
-  :: (MonadError CsvError m,MonadIO m,Applicative m)
-  => FilePath
-  -> m Transactions
+newtype Csv a = Csv { unCsv :: ExceptT CsvError IO a }
+  deriving (Functor,Applicative,Monad,MonadError CsvError,MonadIO)
+
+runCsv :: Csv a -> IO (Either CsvError a)
+runCsv = runExceptT . unCsv
+
+readTransactions :: FilePath -> Csv Transactions
 readTransactions fn = do
   lbs <- wrapException CsvIoError $ (LBS.readFile fn)
   let (headers,csvs) = splitAt 2 . LC8.lines $ lbs
