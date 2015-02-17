@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/bens.css">
 
     <!-- Code syntax highlighting -->
-    <link rel="stylesheet" href="lib/css/zenburn.css">
+    <link rel="stylesheet" href="lib/css/tomorrow-night-blue.css">
 
     <!-- Printing and PDF exports -->
     <script>
@@ -88,10 +88,12 @@
             <p>This quickly becomes a rabbit hole of weird things like MonadTransformers and typeclasses like MonadReader</p>
           </section>
           <section>
-            <p>This talk intends to help demystify these things.</p>
+            <p>This talk intends to help demystify these things and give the motivations of the current status quo.</p>
           </section>
           <section>
-            <p>And supply some sample code with more details to go fiddle with afterwards.</p>
+            <p>We're only going to go through the concepts in this talk</p>
+            <p>There will be sample code using these concepts in a multi-layered app for you to learn the details offline.</p>
+            <br/>
             <p>(So don't worry if it doesn't all sink in right now)</p>
           </section>
         </section>
@@ -99,10 +101,161 @@
           <section>
             <h1>Catching Exceptions: Attempt 1</h1>
           </section>
+          <section>
+            <pre><code>λ&gt;:t readFile
+readFile "bad" :: FilePath -&gt; IO String </code></pre>
+            <br />
+            <p>Failure is invisible our types. Could do better.</p>
+          </section>
+          <section>
+            <pre><code>λ&gt; readFile "bad"
+*** Exception: bad: openFile: does not exist (No such file or directory)</code></pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">safeLoadFile :: FilePath -> IO (Either IOException String)
+safeLoadFile f = (<span class="fragment">Right <$> </span>readFile f) <span class="fragment">`catch` (\ e -> pure (Left e) )</span></span>
+
+<span class="fragment">fileText "booboo"
+-- Left booboo: openFile: does not exist (No such file or directory)
+fileText "stuff.txt"
+-- Right "Stuff"</span></pre>
+          </section>
+          <section>
+            <table width="500px" class="monad-table monad-colour1 fragment highlight-red" data-fragment-index=0>
+              <tr><td>IO</td></tr>
+              <tr><td>
+                  <table class="monad-table monad-colour2 fragment highlight-red" data-fragment-index=1>
+                    <tr>
+                      <td colspan="2">Either</td>
+                    </tr>
+                    <tr>
+                      <td>IOException</td>
+                      <td class="fragment highlight-red" data-fragment-index=2>String</td>
+                    </tr>
+                  </table>
+              </td></tr>
+            </table>
+            <br />
+            <pre class="highlight haskell">fileChars :: FilePath -> IO (Either IOException Int)
+fileChars = <span class="fragment" data-fragment-index=0>fmap </span> <span class="fragment" data-fragment-index=1>( fmap <span class="fragment" data-fragment-index=2>length</span> )</span> . safeLoadFile</pre>
+            <pre class="highlight haskell fragment">fileChars "booboo"
+-- Left booboo: openFile: does not exist (No such file or directory)
+
+fileChars "stuff.txt"
+--Right 5</pre>
+          </section>
+          <section>
+            <table width="500px" class="monad-table monad-colour1 fragment highlight-red" data-fragment-index=0>
+              <tr><td>IO</td></tr>
+              <tr><td>
+                  <table class="monad-table monad-colour2 fragment highlight-red" data-fragment-index=1>
+                    <tr>
+                      <td colspan="2">Either</td>
+                    </tr>
+                    <tr>
+                      <td>IOException</td>
+                      <td class="fragment highlight-red" data-fragment-index=2>String</td>
+                    </tr>
+                  </table>
+              </td></tr>
+            </table>
+            <br/>
+            <div class="types-walkthrough fragment fade-out" data-fragment-index=2>
+              <p>Function needed:</p>
+              <div class="fragment fade-out" data-fragment-index=0>IO (Either IOException String) -> IO (Either IOException ())</div>
+              <div class="fragment current-visible" data-fragment-index=0>(Either IOException String) -> IO (Either IOException ())</div>
+              <div class="fragment current-visible" data-fragment-index=1>String -> IO ()</div>
+            </div>
+            <br />
+            <pre class="highlight haskell">safePrintFile :: FilePath -> IO (Either IOException ())
+safePrintFile f = safeLoadFile f <span class="fragment" data-fragment-index=0>&gt;&gt;= </span><span class="fragment" data-fragment-index=1>traverse <span class="fragment" data-fragment-index=2>putStrLn</span></span></pre>
+            <pre class="highlight haskell fragment" data-fragment-index=2>fileChars "booboo"
+-- Left booboo: openFile: does not exist (No such file or directory)
+
+fileChars "stuff.txt"
+--Right 5</pre>
+          </section>
+          <section>
+            <h1>Too many layers!</h1>
+            <p>We need monad that had failure like IO (Either e a) without having to unwrap two things every step</p>
+          </section>
         </section>
         <section>
           <section>
-            <h1>Monad Transformers & ExceptT</h1>
+            <h1>Monad Transformers & EitherT</h1>
+          </section>
+          <section>
+            <table class="table-centered">
+              <tr>
+                <th>Instead of nesting</th>
+                <th>We have a stack</th>
+              </tr>
+              <tr>
+                <td>
+                  <table class="monad-table monad-colour1">
+                    <tr><td>IO</td></tr>
+                    <tr><td>
+                        <table class="monad-table monad-colour2">
+                          <tr>
+                            <td colspan="2">Either</td>
+                          </tr>
+                          <tr>
+                            <td>IOException</td>
+                            <td>String</td>
+                          </tr>
+                        </table>
+                    </td></tr>
+                  </table>
+                </td>
+                <td>
+                  <table class="monad-table monad-colour1">
+                    <tr><td>EitherT IOException</td></tr>
+                    <tr><td>IO</td></tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            <br/>
+            <pre class="highlight haskell fragment">λ&gt; :t EitherT
+EitherT :: m  (Either e a) -> EitherT e m  a
+<span class="fragment">EitherT :: IO (Either e a) -> EitherT e IO a</span></pre>
+            <br/>
+            <pre class="highlight haskell fragment">λ&gt; :t runEitherT
+runEitherT :: EitherT e m a -> m (Either e a)</pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">λ> runEitherT $
+  EitherT (pure . Left $ "busted") >>=
+    <span class="fragment highlight-red" data-fragment-index=1>EitherT . fmap Right</span> . putStrLn
+Left "busted"
+
+<span class="fragment" data-fragment-index=0>λ> runEitherT $
+  <span class="fragment fade-in-no-display" data-fragment-index=2>pure "Hello World"</span><span class="fragment fade-out fade-out-no-display" data-fragment-index=2><span class="fragment highlight-red" data-fragment-index=1>EitherT (pure . Right $ "Hello World")</span></span> >>=
+    <span class="fragment highlight-red" data-fragment-index=1>EitherT . fmap Right</span> . putStrLn
+Hello World
+Right ()</span></pre>
+            <br/>
+            <p class="fragment">Need better way to move an IO up the stack to EitherT</p>
+          </section>
+          <section>
+            <pre class="highlight haskell">λ> :t EitherT . fmap Right
+EitherT . fmap Right :: Functor m => m a -> EitherT a1 m a
+-- OR
+IO a -> EitherT e m a</pre>
+            <br/>
+            <p class="fragment">The more general version of this is called lift</p>
+            <pre class="highlight haskell fragment">λ> :t lift
+lift :: (MonadTrans t, Monad m) => m a -> t m a</pre>
+            <div class="fragment"><p>Defined in Control.Monad.Trans.Either:</p>
+              <pre class="highlight haskell">instance MonadTrans (EitherT e) where
+  lift = EitherT . liftM Right</pre></div>
+          </section>
+          <section>
+            <h2>liftIO</h2>
+            <p>Because IO can only ever be at the base, there is a special class for lifting IO into a transformer.</p>
+            <pre class="highlight haskell fragment">λ> runEitherT $ pure "Hello World" >>= liftIO . putStrLn
+Hello World
+Right ()</pre>
           </section>
         </section>
         <section>
@@ -172,6 +325,11 @@
           { src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
           { src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
           { src: 'plugin/highlight/highlight.js', async: true, condition: function() { return !!document.querySelector( 'pre code' ); }, callback: function() { hljs.initHighlightingOnLoad(); } },
+          { src: 'plugin/highlight/highlight.js', async: true, callback: function() {
+            [].forEach.call( document.querySelectorAll( '.highlight' ), function( v, i) {
+              hljs.highlightBlock(v);
+            });
+          } },
           { src: 'plugin/zoom-js/zoom.js', async: true },
           { src: 'plugin/notes/notes.js', async: true }
         ]

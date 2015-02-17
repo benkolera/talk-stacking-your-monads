@@ -8,3 +8,83 @@
 #title-text h1 , #title-text h3 , #title-text p {
   color: #52676d;
 }
+
+code pre {
+  background-color: #fff !important;
+}
+
+.reveal pre code {
+  background-color: #002451;
+}
+
+.reveal .monad-table {
+    border: 1px solid;
+}
+
+.reveal .table-centered td ,
+.reveal .table-centered th {
+    text-align: center;
+}
+
+.reveal .monad-table td {
+    text-align: center;
+    border: 1px solid;
+    color: black;
+}
+
+.monad-table.highlight-red.visible.current-fragment , .monad-table td.highlight-red.visible.current-fragment {
+    background: #f47e7d;
+    color: black !important;
+}
+
+.reveal section .monad-table.fragment.current-visible.visible ,
+.reveal section .monad-table *.fragment.highlight-red.visible {
+   color: black;
+}
+
+*.fragment.fade-out.fade-out-no-display.visible {
+  display: none;
+}
+
+*.fragment.fade-in-no-display {
+  display: none;
+}
+*.fragment.fade-in-no-display.visible {
+  display: inline;
+}
+
+.types-walkthrough *.fragment.fade-out.visible {
+  display: none;
+}
+
+.types-walkthrough *.fragment.current-visible.current-fragment {
+  display: block;
+}
+
+.types-walkthrough *.fragment.current-visible {
+  display: none;
+}
+
+.monad-table .monad-table {
+    width: 100%;
+}
+
+.monad-colour1 {
+  background-color: #b5d045;
+}
+
+.monad-colour2 {
+    background-color: #389090;
+}
+
+.monad-colour3 {
+    background-color: #fb8335;
+}
+
+.monad-colour4 {
+    background-color: #e0c7a8;
+}
+
+.monad-colour5 {
+    background-color: #81c0c5;
+}
