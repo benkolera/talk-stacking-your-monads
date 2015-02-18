@@ -96,6 +96,17 @@
             <br/>
             <p>(So don't worry if it doesn't all sink in right now)</p>
           </section>
+          <section>
+            <h2>Assumptions / Talk Rules</h2>
+            <p>You know your way around haskell syntax, typeclasses, monads & how either works.</p>
+            <p>If you don't, stick your hand up and we'll clear that up.</p>
+            <p>Don't be put off by the first chapters! We deliberately start without abstraction to help explain concepts.</p>
+          </section>
+          <section data-background="/images/grandstand.jpg">
+            <div id="title-text">
+              <p>Relax, sit back and enjoy the show! :)</p>
+            </div>
+          </section>
         </section>
         <section>
           <section>
@@ -121,10 +132,10 @@ fileText "stuff.txt"
 -- Right "Stuff"</span></pre>
           </section>
           <section>
-            <table width="500px" class="monad-table monad-colour1 fragment highlight-red" data-fragment-index=0>
+            <table width="500px" class="table-monad monad-colour1 fragment highlight-red" data-fragment-index=0>
               <tr><td>IO</td></tr>
               <tr><td>
-                  <table class="monad-table monad-colour2 fragment highlight-red" data-fragment-index=1>
+                  <table class="table-monad monad-colour2 fragment highlight-red" data-fragment-index=1>
                     <tr>
                       <td colspan="2">Either</td>
                     </tr>
@@ -145,10 +156,10 @@ fileChars "stuff.txt"
 --Right 5</pre>
           </section>
           <section>
-            <table width="500px" class="monad-table monad-colour1 fragment highlight-red" data-fragment-index=0>
+            <table width="500px" class="table-monad monad-colour1 fragment highlight-red" data-fragment-index=0>
               <tr><td>IO</td></tr>
               <tr><td>
-                  <table class="monad-table monad-colour2 fragment highlight-red" data-fragment-index=1>
+                  <table class="table-monad monad-colour2 fragment highlight-red" data-fragment-index=1>
                     <tr>
                       <td colspan="2">Either</td>
                     </tr>
@@ -192,10 +203,10 @@ fileChars "stuff.txt"
               </tr>
               <tr>
                 <td>
-                  <table class="monad-table monad-colour1">
+                  <table class="table-monad monad-colour1">
                     <tr><td>IO</td></tr>
                     <tr><td>
-                        <table class="monad-table monad-colour2">
+                        <table class="table-monad monad-colour2">
                           <tr>
                             <td colspan="2">Either</td>
                           </tr>
@@ -208,7 +219,7 @@ fileChars "stuff.txt"
                   </table>
                 </td>
                 <td>
-                  <table class="monad-table monad-colour1">
+                  <table class="table-monad monad-colour1">
                     <tr><td>EitherT IOException</td></tr>
                     <tr><td>IO</td></tr>
                   </table>
@@ -257,20 +268,189 @@ lift :: (MonadTrans t, Monad m) => m a -> t m a</pre>
 Hello World
 Right ()</pre>
           </section>
+          <section>
+            <h2>So?</h2>
+            <p>We replaced nested monads with a transformer stack</p>
+            <p>This stack behaves as though it has the features of both with a single bind each step</p>
+            <p>We now have to promote an action from below up to the next level.</p>
+            <p>Constructing the actions is still way too hard</p>
+          </section>
         </section>
         <section>
           <section>
-            <h1>Weaving Configuration with ReaderT</h1>
+            <img src="/images/detour.png" width="640" height="320" class="img-no-border" />
+            <p>Any questions at this point?</p>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h1>Configuration and Reader(T)
+          </section>
+          <section>
+            <pre class="highlight haskell">queryAllOfTheThings :: Connection -> IO [Thing]
+queryAllOfTheThings conn = do
+  as <- queryForA conn ...
+  bs <- queryForB conn ...
+  bs <- queryForC conn ...
+  pure (as <> bs <> cs)
+
+<span class="fragment">
+-- And it gets worse with layers
+queryForC :: Connection -> OtherInput -> IO [Thing]
+queryForC conn input =
+  queryForSomethingElse conn (pureCalculationWithInput input)</span></pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">λ> :t ReaderT
+ReaderT :: (r -> m a) -> ReaderT r m a</pre>
+            <br/>
+            <table>
+              <tr>
+                <td width="200px">
+                  <table class="table-monad monad-colour1">
+                    <tr><td>r -></td></tr>
+                    <tr><td>m</td></tr>
+                  </table>
+                </td>
+                <td width="80px">OR</td>
+                <td width="300px">
+                  <table class="table-monad monad-colour1">
+                    <tr><td>Connection -></td></tr>
+                    <tr><td>IO</td></tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </section>
+          <section>
+            <pre class="highlight haskell">queryAllOfTheThings :: <span class="fragment fade-out fade-out-no-display" data-fragment-index=0>Connection -> IO [Thing]</span><span class="fragment fade-in-no-display" data-fragment-index=0>ReaderT Connection IO [Thing]</span>
+queryAllOfTheThings = do
+  as <- queryForA <span class="fragment fade-out fade-out-no-display" data-fragment-index=0>conn </span>...
+  as <- queryForB <span class="fragment fade-out fade-out-no-display" data-fragment-index=0>conn </span>...
+  as <- queryForC <span class="fragment fade-out fade-out-no-display" data-fragment-index=0>conn </span>...
+  pure (as <> bs <> cs)
+
+<span class="fragment" data-fragment-index=1>
+queryForC :: <span class="fragment fade-out fade-out-no-display" data-fragment-index=2>Connection -> OtherInput -> IO [Thing]</span><span class="fragment fade-in-no-display" data-fragment-index=2>OtherInput -> ReaderT Connection IO [Thing]</span>
+queryForC <span class="fragment fade-out fade-out-no-display" data-fragment-index=2>conn </span>input =
+ queryForSomethingElse (pureCalculationWithInput input)</span>
+
+<span class="fragment" data-fragment-index=3>
+queryForSomethingElse input = ReaderT (doQuery ...)
+
+doQuery :: Query -> Connection -> IO [Thing]
+doQuery = ...</span></pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">λ> :t runReaderT
+runReaderT :: ReaderT r m a -> r -> m a</pre>
+            <br />
+            <pre class="highlight haskell fragment">λ> let prog = ReaderT putStrLn >> ReaderT (putStrLn . fmap toUpper)
+
+:t prog
+ReaderT String IO ()
+
+λ> runReaderT prog "Hello World"
+Hello World
+HELLO WORLD</pre>
+          </section>
+          <section>
+            <p>ReaderT is something we can stack on which can access a configuration at each step</p>
+            <p>Hides away the passing of configuration through the layers</p>
+            <p>Run function wires config through every step and returns the resulting monad</p>
           </section>
         </section>
         <section>
           <section>
             <h1>Stacking it all together</h1>
           </section>
+          <section>
+            <p>The side-effecting parts of our app are going to need config and a way to fail (without exceptions!)</p>
+          </section>
+          <section>
+            <pre class="highlight haskell">type App e c a = App (<span class="fragment fade-out fade-out-no-display" data-fragment-index=1><span class="fragment highlight-red" data-fragment-index=0>EitherT</span></span><span class="fragment fade-in fade-in-no-display" data-fragment-index=1>ExceptT</span> e (ReaderT c IO) a)</pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">data AppError = DbSqlException SqlError | MissingFoo | ...
+
+type App c a = App (ExceptT AppError (ReaderT c IO) a)</pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">data AppError = DbSqlException SqlError | MissingFoo | ...
+
+data AppEnv = AppEnv { appEnvConnection :: Connection }
+
+type App a = App (ExceptT AppError (ReaderT AppEnv IO) a)</pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">{-# LANGUAGE GeneralisedNewTypeDeriving #-}
+
+data AppError = DbSqlException SqlError | MissingFoo | ...
+
+data AppEnv = AppEnv { appEnvConnection :: Connection }
+
+type App a = App (ExceptT AppError (ReaderT AppEnv IO) a)
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadReader AppEnv
+    , MonadError AppError
+    , MonadIO
+    ) </pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">{-# LANGUAGE GeneralisedNewTypeDeriving #-}
+
+data AppError = DbSqlException SqlError | MissingFoo | ...
+
+data AppEnv = AppEnv { appEnvConnection :: Connection }
+
+type App a = App { unApp :: ExceptT AppError (ReaderT AppEnv IO) a }
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadReader AppEnv
+    , MonadError AppError
+    , MonadIO
+    )
+
+runApp :: AppEnv -> App a -> IO (Either AppError a)
+runApp e = runExceptT . flip runReaderT . unApp</pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">
+ask  :: MonadReader r m => m r
+asks :: MonadReader r m => (r -> a) -> m a
+
+λ> flip runReaderT "Hello World" $ do
+  r      <- ask
+  rUpper <- asks (fmap toUpper)
+  pure (r,rUpper)
+
+("Hello World","HELLO WORLD")</pre>
+          </section>
+          <section>
+            <pre class="highlight haskell">throwError :: MonadError e m => e -> m a
+catchError :: MonadError e m => m a -> (e -> m a) -> m a
+
+<span class="fragment">
+λ> runExceptT (throwError "Bzzt")
+Left "Bzzt"</span>
+
+<span class="fragment">
+λ> runExceptT . catchError (throwError "Bzzt") $ \e -> do
+  liftIO (putStrLn $ "ERROR: " <> e)
+  pure "All ok now!"
+
+ERROR: Bzzt
+Right "All ok now!"</span></pre>
+          </section>
         </section>
         <section>
           <section>
-            <h1>Making the Layers Talk Nicely</h1>
+            <h1>Layers of Layers</h1>
           </section>
         </section>
         <section>

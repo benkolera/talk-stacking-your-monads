@@ -6,7 +6,8 @@
 }
 
 #title-text h1 , #title-text h3 , #title-text p {
-  color: #52676d;
+  /* color: #52676d; */
+    color: #3e4e53;
 }
 
 code pre {
@@ -17,7 +18,7 @@ code pre {
   background-color: #002451;
 }
 
-.reveal .monad-table {
+.reveal .table-monad {
     border: 1px solid;
 }
 
@@ -26,19 +27,24 @@ code pre {
     text-align: center;
 }
 
-.reveal .monad-table td {
+.reveal img.img-no-border {
+    border: 0px;
+    box-shadow: 0 0 0 rgba(0,0,0,0);
+}
+
+.reveal .table-monad td {
     text-align: center;
     border: 1px solid;
     color: black;
 }
 
-.monad-table.highlight-red.visible.current-fragment , .monad-table td.highlight-red.visible.current-fragment {
+.table-monad.highlight-red.visible.current-fragment , .table-monad td.highlight-red.visible.current-fragment {
     background: #f47e7d;
     color: black !important;
 }
 
-.reveal section .monad-table.fragment.current-visible.visible ,
-.reveal section .monad-table *.fragment.highlight-red.visible {
+.reveal section .table-monad.fragment.current-visible.visible ,
+.reveal section .table-monad *.fragment.highlight-red.visible {
    color: black;
 }
 
@@ -65,7 +71,7 @@ code pre {
   display: none;
 }
 
-.monad-table .monad-table {
+.table-monad .table-monad {
     width: 100%;
 }
 
