@@ -25,3 +25,13 @@ wrapException
   -> m a
 wrapException f a = do
   liftIO (catch (fmap Right a) (pure . Left . f)) >>= throwEither
+
+wrapExceptions
+  :: (MonadError e m,MonadIO m, Applicative m)
+  => IO a
+  -> [Handler e]
+  -> m a
+wrapExceptions a hs =
+  liftIO (catches (fmap Right a) handlers) >>= throwEither
+  where
+    handlers = fmap (fmap Left) hs
