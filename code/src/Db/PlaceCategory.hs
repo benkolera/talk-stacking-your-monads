@@ -1,0 +1,75 @@
+{-# LANGUAGE Arrows                #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude     #-}
+{-# LANGUAGE TemplateHaskell       #-}
+module Db.PlaceCategory
+  ( PlaceCategory'(PlaceCategory)
+  , NewPlaceCategory
+  , PlaceCategory
+  , placeCategoryQuery
+  , getPlaceCategory
+  , insertPlaceCategory
+  , placeCategoryId
+  , placeCategoryName
+  ) where
+
+import BasePrelude hiding (optional)
+
+import Control.Lens
+import Control.Monad.Except       (MonadError)
+import Control.Monad.Reader       (MonadReader)
+import Control.Monad.Trans        (MonadIO)
+import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
+import Data.Text                  (Text)
+import Opaleye
+
+import Db.Internal
+
+data PlaceCategory' a b = PlaceCategory
+  { _placeCategoryId   :: a
+  , _placeCategoryName :: b
+  } deriving (Eq,Show)
+makeLenses ''PlaceCategory'
+
+type PlaceCategory = PlaceCategory' Int Text
+type PlaceCategoryColumn = PlaceCategory' (Column PGInt4) (Column PGText)
+
+makeAdaptorAndInstance "pPlaceCategory" ''PlaceCategory'
+
+type NewPlaceCategory = PlaceCategory' (Maybe Int) Text
+
+type NewPlaceCategoryColumn = PlaceCategory' (Maybe (Column PGInt4)) (Column PGText)
+
+placeCategoryTable :: Table NewPlaceCategoryColumn PlaceCategoryColumn
+placeCategoryTable = Table "place_category" $ pPlaceCategory PlaceCategory
+  { _placeCategoryId     = optional "id"
+  , _placeCategoryName   = required "name"
+  }
+
+placeCategoryQuery :: Query PlaceCategoryColumn
+placeCategoryQuery = queryTable placeCategoryTable
+
+insertPlaceCategory
+  :: ( MonadReader DbEnv m
+    , MonadError DbError m
+    , Applicative m
+    , MonadIO m
+    )
+  => NewPlaceCategory
+  -> m [Int]
+insertPlaceCategory =
+  liftInsertReturning placeCategoryTable (view placeCategoryId) . packNew
+
+getPlaceCategory :: Int -> Db (Maybe PlaceCategory)
+getPlaceCategory i = liftQueryFirst $ proc () -> do
+  p <- placeCategoryQuery -< ()
+  restrict -< p^.placeCategoryId .== pgInt4 i
+  returnA -< p
+
+packNew :: NewPlaceCategory -> NewPlaceCategoryColumn
+packNew = pPlaceCategory PlaceCategory
+  { _placeCategoryId     = fmap pgInt4
+  , _placeCategoryName   = pgStrictText
+  }

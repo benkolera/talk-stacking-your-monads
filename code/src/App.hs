@@ -29,7 +29,7 @@ newtype App a = App
     , MonadError AppError
     )
 
-runCsv :: (Applicative m,MonadError AppError m,MonadIO m) => ExceptT CsvError IO a -> m a
-runCsv c = do
+liftCsv :: (Applicative m,MonadError AppError m,MonadIO m) => ExceptT CsvError IO a -> m a
+liftCsv c = do
   res <- liftIO $ runExceptT c
   throwEither . first AppCsvError $ res
