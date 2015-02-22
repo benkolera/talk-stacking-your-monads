@@ -7,7 +7,7 @@ module Types where
 
 import BasePrelude
 
-import Control.Lens (makeLenses, makePrisms, makeWrapped)
+import Control.Lens
 import Data.Text    (Text)
 import Data.Time    (Day)
 
@@ -60,7 +60,7 @@ makeLenses ''InternetTransferDesc
 
 data TransactionDesc
   = VisaPurchase VisaPurchaseDesc
-  | EftposPurchase Text
+  | EftposPurchase Place
   | ForeignCurrencyConversionFee
   | AtmOperatorFee AtmOperatorFeeDesc
   | AtmWithdrawal Place
@@ -69,6 +69,19 @@ data TransactionDesc
   | InternetTransferDebit  InternetTransferDesc
   deriving (Eq,Show)
 makePrisms ''TransactionDesc
+
+-- transactionDescPlace :: Getter TransactionDesc (Maybe Place)
+transactionDescPlace :: Traversal' TransactionDesc Place
+transactionDescPlace =
+  _VisaPurchase.visaPurchasePlace
+  `failing` _EftposPurchase
+  `failing` _AtmWithdrawal
+
+-- transactionDescPlace' :: TransactionDesc -> Maybe Place
+-- transactionDescPlace' (VisaPurchase v)   = Just $ v^.visaPurchasePlace
+-- transactionDescPlace' (EftposPurchase p) = Just p
+-- transactionDescPlace' (AtmWithdrawal p)  = Just p
+-- transactionDescPlace' _                  = Nothing
 
 data Transaction = Transaction
   { _transactionDate    :: Day
@@ -81,7 +94,7 @@ makeLenses ''Transaction
 data Transactions = Transactions
   { _transactionsAcctName :: Text
   , _transactionsAcctType :: Text
-  , _transactionsAcctNum  :: Integer
+  , _transactionsAcctNum  :: Int
   , _transactions         :: [Transaction]
   } deriving (Eq,Show)
 makeLenses ''Transactions

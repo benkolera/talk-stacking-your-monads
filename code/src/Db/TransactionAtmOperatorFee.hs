@@ -18,9 +18,6 @@ module Db.TransactionAtmOperatorFee
 import BasePrelude hiding (optional)
 
 import Control.Lens
-import Control.Monad.Except       (MonadError)
-import Control.Monad.Reader       (MonadReader)
-import Control.Monad.Trans        (MonadIO)
 import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
 import Data.Text                  (Text)
 import Opaleye
@@ -61,16 +58,9 @@ getTransactionAtmOperatorFee i = liftQueryFirst $ proc () -> do
   restrict -< tc^.transactionAtmOperatorFeeTransactionId .== pgInt4 i
   returnA -< tc
 
-insertTransactionAtmOperatorFee
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => NewTransactionAtmOperatorFee
-  -> m [Int]
+insertTransactionAtmOperatorFee :: NewTransactionAtmOperatorFee -> Db Int
 insertTransactionAtmOperatorFee =
-  liftInsertReturning transactionAtmOperatorFeeTable (view transactionAtmOperatorFeeTransactionId)
+  liftInsertReturningFirst transactionAtmOperatorFeeTable (view transactionAtmOperatorFeeTransactionId)
   . packNew
 
 packNew :: NewTransactionAtmOperatorFee -> NewTransactionAtmOperatorFeeColumn

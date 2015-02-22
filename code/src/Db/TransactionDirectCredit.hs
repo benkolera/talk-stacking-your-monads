@@ -18,9 +18,6 @@ module Db.TransactionDirectCredit
 import BasePrelude hiding (optional)
 
 import Control.Lens
-import Control.Monad.Except       (MonadError)
-import Control.Monad.Reader       (MonadReader)
-import Control.Monad.Trans        (MonadIO)
 import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
 import Opaleye
 
@@ -60,16 +57,9 @@ getTransactionDirectCredit i = liftQueryFirst $ proc () -> do
   restrict -< tc^.transactionDirectCreditTransactionId .== pgInt4 i
   returnA -< tc
 
-insertTransactionDirectCredit
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => NewTransactionDirectCredit
-  -> m [Int]
+insertTransactionDirectCredit :: NewTransactionDirectCredit -> Db Int
 insertTransactionDirectCredit =
-  liftInsertReturning transactionDirectCreditTable (view transactionDirectCreditTransactionId)
+  liftInsertReturningFirst transactionDirectCreditTable (view transactionDirectCreditTransactionId)
   . packNew
 
 packNew :: NewTransactionDirectCredit -> NewTransactionDirectCreditColumn

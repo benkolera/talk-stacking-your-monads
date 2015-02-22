@@ -74,7 +74,7 @@ decodeCsvLine bs =
 parseHeader
   :: (MonadError CsvError m, Applicative m)
   => [LBS.ByteString]
-  -> m (T.Text,T.Text,Integer)
+  -> m (T.Text,T.Text,Int)
 parseHeader hs = throwEither . first CsvHeaderParseError $ do
   h <- note "Header Missing" . headMay $ hs
   first show $ parse header (LC8.unpack h) (decodeUtf8 . LBS.toStrict $ h)
@@ -83,7 +83,7 @@ parseHeader hs = throwEither . first CsvHeaderParseError $ do
       void $ string "\"Account History for Account:\",\""
       name <- manyTill anyChar (try $ string " - ")
       t    <- manyTill anyChar (try $ string " - ")
-      num  <- integer
+      num  <- int
       pure (T.pack name,T.pack t,num)
 
 words :: Parser T.Text
@@ -91,6 +91,9 @@ words = T.unwords . fmap T.pack <$> sepEndBy1 (many1 alphaNum) space
 
 integer :: Parser Integer
 integer = read <$> many1 digit
+
+int :: Parser Int
+int = read <$> many1 digit
 
 anyText :: Parser T.Text
 anyText = T.pack <$> many anyChar
@@ -104,7 +107,7 @@ desc s p = string s *> spaces *> p
 transactionDesc :: Parser TransactionDesc
 transactionDesc = choice
   [ desc "VISA PURCHASE"                   $ fmap VisaPurchase visaPurchaseDesc
-  , desc "EFTPOS WDL"                      $ fmap EftposPurchase anyText
+  , desc "EFTPOS WDL"                      $ fmap (EftposPurchase . Place) anyText
   , desc "FOREIGN CURRENCY CONVERSION FEE" $ pure ForeignCurrencyConversionFee
   , desc "DIRECT CREDIT"                   $ fmap DirectCredit directCreditDesc
   , string "ATM " *> choice

@@ -18,9 +18,6 @@ module Db.PlaceCategory
 import BasePrelude hiding (optional)
 
 import Control.Lens
-import Control.Monad.Except       (MonadError)
-import Control.Monad.Reader       (MonadReader)
-import Control.Monad.Trans        (MonadIO)
 import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
 import Data.Text                  (Text)
 import Opaleye
@@ -51,16 +48,9 @@ placeCategoryTable = Table "place_category" $ pPlaceCategory PlaceCategory
 placeCategoryQuery :: Query PlaceCategoryColumn
 placeCategoryQuery = queryTable placeCategoryTable
 
-insertPlaceCategory
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => NewPlaceCategory
-  -> m [Int]
+insertPlaceCategory :: NewPlaceCategory -> Db Int
 insertPlaceCategory =
-  liftInsertReturning placeCategoryTable (view placeCategoryId) . packNew
+  liftInsertReturningFirst placeCategoryTable (view placeCategoryId) . packNew
 
 getPlaceCategory :: Int -> Db (Maybe PlaceCategory)
 getPlaceCategory i = liftQueryFirst $ proc () -> do

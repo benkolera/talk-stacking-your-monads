@@ -49,84 +49,57 @@ closeDbEnv :: DbEnv -> IO ()
 closeDbEnv = close . view dbEnvConnection
 
 liftQuery
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    , Default QueryRunner columnsW haskells
-    )
+  :: ( Default QueryRunner columnsW haskells )
   => Query columnsW
-  -> m [haskells]
+  -> Db [haskells]
 liftQuery q = withConnection (`runQuery` q)
 
 liftQueryFirst
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Functor m
-    , Applicative m
-    , MonadIO m
-    , Default QueryRunner columnsW haskells
-    )
+  :: ( Default QueryRunner columnsW haskells )
   => Query columnsW
-  -> m (Maybe haskells)
+  -> Db (Maybe haskells)
 liftQueryFirst = fmap headMay . liftQuery
 
 liftInsert
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => Table columnsW columnsR
+  :: Table columnsW columnsR
   -> columnsW
-  -> m Int64
+  -> Db Int64
 liftInsert t c = withConnection (\ con -> runInsert con t c)
 
 liftInsertReturning
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    , Default QueryRunner returned haskells
+  :: ( Default QueryRunner returned haskells
     , Default Unpackspec returned returned
     )
   => Table columnsW columnsR
   -> (columnsR -> returned)
   -> columnsW
-  -> m [haskells]
+  -> Db [haskells]
 liftInsertReturning t f c = withConnection (\ con -> runInsertReturning con t c f)
 
-liftUpdate
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
+liftInsertReturningFirst
+  :: ( Default QueryRunner returned haskells
+    , Default Unpackspec returned returned
     )
   => Table columnsW columnsR
+  -> (columnsR -> returned)
+  -> columnsW
+  -> Db haskells
+liftInsertReturningFirst t f = fmap head . liftInsertReturning t f
+
+liftUpdate
+  :: Table columnsW columnsR
   -> (columnsR -> columnsW)
   -> (columnsR -> Column PGBool)
-  -> m Int64
+  -> Db Int64
 liftUpdate t f w = withConnection (\ con -> runUpdate con t f w)
 
 liftDelete
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => Table columnsW columnsR
+  :: Table columnsW columnsR
   -> (columnsR -> Column PGBool)
-  -> m Int64
+  -> Db Int64
 liftDelete t w = withConnection (\ con -> runDelete con t w)
 
-withConnection
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => (Connection -> IO a)
-  -> m a
+withConnection :: (Connection -> IO a) -> Db a
 withConnection f = do
   c <- view dbEnvConnection
   wrapExceptions (f c)

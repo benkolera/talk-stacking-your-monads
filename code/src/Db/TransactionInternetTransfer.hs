@@ -19,9 +19,6 @@ module Db.TransactionInternetTransfer
 import BasePrelude hiding (optional)
 
 import Control.Lens
-import Control.Monad.Except       (MonadError)
-import Control.Monad.Reader       (MonadReader)
-import Control.Monad.Trans        (MonadIO)
 import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
 import Data.Text                  (Text)
 import Opaleye
@@ -66,16 +63,9 @@ getTransactionInternetTransfer i = liftQueryFirst $ proc () -> do
   restrict -< tc^.transactionInternetTransferTransactionId .== pgInt4 i
   returnA -< tc
 
-insertTransactionInternetTransfer
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => NewTransactionInternetTransfer
-  -> m [Int]
+insertTransactionInternetTransfer :: NewTransactionInternetTransfer -> Db Int
 insertTransactionInternetTransfer =
-  liftInsertReturning transactionInternetTransferTable (view transactionInternetTransferTransactionId)
+  liftInsertReturningFirst transactionInternetTransferTable (view transactionInternetTransferTransactionId)
   . packNew
 
 packNew :: NewTransactionInternetTransfer -> NewTransactionInternetTransferColumn

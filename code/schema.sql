@@ -27,7 +27,8 @@ CREATE TABLE transaction (
   ('visa','eftpos','foreign_currency_conversion_fee','atm_operator_fee'
   ,'atm_withdrawal','direct_credit','internet_transfer_credit'
   ,'internet_transfer_debit'))
-, place_id INTEGER                REFERENCES place(id)
+, place_id INTEGER                   REFERENCES place(id)
+, account_id INTEGER        NOT NULL REFERENCES account(id)
 );
 
 CREATE TABLE transaction_visa (

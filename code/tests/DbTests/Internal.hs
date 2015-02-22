@@ -27,7 +27,7 @@ assertDbResult e f = either (error . ("DB Failed: " <>) . show) f e
 roundTripTest
   :: (Eq a, Show a)
   => String
-  -> (n -> Db [i])
+  -> (n -> Db i)
   -> (i -> Db (Maybe a))
   -> (n -> i -> a)
   -> n
@@ -35,10 +35,10 @@ roundTripTest
 roundTripTest testName insertN queryA newToExisting new =
   withDb testName $ \ e -> do
     res <- runDb e $ do
-      i <- headMay <$> insertN new
-      a <- i .>>=. queryA
+      i <- insertN new
+      a <- queryA i
       pure (i,a)
-    assertDbResult res $ \ (Just i,a) -> Just (newToExisting new i) @=? a
+    assertDbResult res $ \ (i,a) -> Just (newToExisting new i) @=? a
 
 withDb :: String -> (DbEnv -> Assertion) -> Assertion
 withDb testName f = do

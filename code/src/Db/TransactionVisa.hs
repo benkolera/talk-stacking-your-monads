@@ -20,9 +20,6 @@ module Db.TransactionVisa
 import BasePrelude hiding (optional)
 
 import Control.Lens
-import Control.Monad.Except       (MonadError)
-import Control.Monad.Reader       (MonadReader)
-import Control.Monad.Trans        (MonadIO)
 import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
 import Data.Text                  (Text)
 import Data.Time                  (Day)
@@ -72,16 +69,9 @@ getTransactionVisa i = liftQueryFirst $ proc () -> do
   restrict -< tc^.transactionVisaTransactionId .== pgInt4 i
   returnA -< tc
 
-insertTransactionVisa
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => NewTransactionVisa
-  -> m [Int]
+insertTransactionVisa :: NewTransactionVisa -> Db Int
 insertTransactionVisa =
-  liftInsertReturning transactionVisaTable (view transactionVisaTransactionId)
+  liftInsertReturningFirst transactionVisaTable (view transactionVisaTransactionId)
   . packNew
 
 packNew :: NewTransactionVisa -> NewTransactionVisaColumn

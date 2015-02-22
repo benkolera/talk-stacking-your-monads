@@ -18,4 +18,4 @@ testRoundTrip = roundTripTest "transaction"
   insertTransaction
   getTransaction
   (flip (set transactionId))
-  (Transaction Nothing (fromGregorian 2015 2 23) (-10) 90 "eftpos" (Just 1))
+  (Transaction Nothing (fromGregorian 2015 2 23) (-10) 90 "eftpos" (Just 1) 1)

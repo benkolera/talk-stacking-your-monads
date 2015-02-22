@@ -11,6 +11,7 @@ module Db.Account
   , allAccounts
   , accountQuery
   , insertAccount
+  , upsertAccountByNumber
   , getAccount
   , accountId
   , accountName
@@ -21,9 +22,6 @@ module Db.Account
 import BasePrelude hiding (optional)
 
 import Control.Lens
-import Control.Monad.Except       (MonadError)
-import Control.Monad.Reader       (MonadReader)
-import Control.Monad.Trans        (MonadIO)
 import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
 import Data.Text                  (Text)
 import Opaleye
@@ -72,16 +70,20 @@ getAccount i = liftQueryFirst $ proc () -> do
   restrict -< a^.accountId .== pgInt4 i
   returnA -< a
 
-insertAccount
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => NewAccount
-  -> m [Int]
-insertAccount =
-  liftInsertReturning accountTable (view accountId) . packNew
+findAccountByNumber :: Int -> Db (Maybe Account)
+findAccountByNumber n = liftQueryFirst $ proc () -> do
+  a <- accountQuery -< ()
+  restrict -< a^.accountNumber .== pgInt4 n
+  returnA -< a
+
+upsertAccountByNumber :: NewAccount -> Db Int
+upsertAccountByNumber na = do
+  a <- findAccountByNumber (na^.accountNumber)
+  maybe (insertAccount na) (pure . (^.accountId)) a
+
+insertAccount :: NewAccount -> Db Int
+insertAccount = do
+  liftInsertReturningFirst accountTable (view accountId) . packNew
 
 packNew :: NewAccount -> NewAccountColumn
 packNew = pAccount Account

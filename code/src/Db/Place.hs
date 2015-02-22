@@ -11,6 +11,7 @@ module Db.Place
   , placeQuery
   , getPlace
   , insertPlace
+  , upsertPlaceByName
   , placeId
   , placeName
   , placePlaceCategoryId
@@ -19,9 +20,6 @@ module Db.Place
 import BasePrelude hiding (optional)
 
 import Control.Lens
-import Control.Monad.Except       (MonadError)
-import Control.Monad.Reader       (MonadReader)
-import Control.Monad.Trans        (MonadIO)
 import Data.Profunctor.Product.TH (makeAdaptorAndInstance)
 import Data.Text                  (Text)
 import Opaleye
@@ -54,16 +52,20 @@ placeTable = Table "place" $ pPlace Place
 placeQuery :: Query PlaceColumn
 placeQuery = queryTable placeTable
 
-insertPlace
-  :: ( MonadReader DbEnv m
-    , MonadError DbError m
-    , Applicative m
-    , MonadIO m
-    )
-  => NewPlace
-  -> m [Int]
+insertPlace :: NewPlace -> Db Int
 insertPlace =
-  liftInsertReturning placeTable (view placeId) . packNew
+  liftInsertReturningFirst placeTable (view placeId) . packNew
+
+findPlaceByName :: Text -> Db (Maybe Place)
+findPlaceByName n = liftQueryFirst $ proc () -> do
+  a <- placeQuery -< ()
+  restrict -< a^.placeName .== pgStrictText n
+  returnA -< a
+
+upsertPlaceByName :: NewPlace -> Db Int
+upsertPlaceByName na = do
+  a <- findPlaceByName (na^.placeName)
+  maybe (insertPlace na) (pure . (^.placeId)) a
 
 getPlace :: Int -> Db (Maybe Place)
 getPlace i = liftQueryFirst $ proc () -> do
