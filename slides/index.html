@@ -78,9 +78,9 @@
           <section>
             <p>This often involves:</p>
             <ul>
-              <li>Threading configuration</li>
-              <li>Catching exceptions early to avoid problems with laziness</li>
-              <li>Representing these errors in your types</li>
+              <li>Threading configuration through your app (nicely)</li>
+              <li>Catching exceptions ASAP to avoid their stealthy ickiness</li>
+              <li>Representing failure modes in your types so they are easier to reason about</li>
             </ul>
           </section>
           <section>
@@ -417,19 +417,19 @@ type App a = App { unApp :: ExceptT AppError (ReaderT AppEnv IO) a }
     )
 
 runApp :: AppEnv -> App a -> IO (Either AppError a)
-runApp e = runExceptT . flip runReaderT . unApp</pre>
+runApp e = runExceptT . flip runReaderT e . unApp</pre>
           </section>
           <section>
             <pre class="highlight haskell">
 ask  :: MonadReader r m => m r
 asks :: MonadReader r m => (r -> a) -> m a
 
-λ> flip runReaderT "Hello World" $ do
+<span class="fragment">λ> flip runReaderT "Hello World" $ do
   r      <- ask
   rUpper <- asks (fmap toUpper)
   pure (r,rUpper)
 
-("Hello World","HELLO WORLD")</pre>
+("Hello World","HELLO WORLD")</span></pre>
           </section>
           <section>
             <pre class="highlight haskell">throwError :: MonadError e m => e -> m a
@@ -447,37 +447,142 @@ Left "Bzzt"</span>
 ERROR: Bzzt
 Right "All ok now!"</span></pre>
           </section>
+          <section>
+            <h2>BAM! And the layers are gone!</h2>
+            <pre class="highlight haskell">loadPerson :: Int -> App (Maybe (Person,Address))
+loadPerson i = do
+  pMay <- doQuery "SELECT * FROM person WHERE id = ?" (Only i)
+  for pMay $ \ p -> do
+    aMay <- doQuery "SELECT * FROM address WHERE person_id = ?" (Only i)
+    a    <- maybe (throwError (MissingPersonAddress i)) pure aMay
+    pure (p,a)
+
+doQuery :: (FromRow a,ToRow i) => Query -> i -> Db a
+doQuery q i = do
+  c <- asks _dbEnvConnection
+  -- This is really ugly, but we'll hide it in real code
+  e <- liftIO $
+    (Right <$> query c q i) `catch` (pure . Left . DbException)
+  either throwError pure $ e</pre>
+          </section>
+          <section>
+            <p>We meld our monad transformer into one thing to hide some details.</p>
+            <p>Don't have to care constructing the layers anymore due to MonadReader/MonadError/MonadIO.</p>
+            <p>We finally have a single thing that can fail, do io or give us the conf.</p>
+          </section>
+          <section>
+            <h2>Yay! :-)</h2>
+          </section>
         </section>
         <section>
           <section>
             <h1>Layers of Layers</h1>
           </section>
-        </section>
-        <section>
           <section>
-            <h1>Wrap Up</h1>
+            <p>With non-trivial apps, you'll have more than one backend:</p>
+            <ul>
+              <li>DB</li>
+              <li>Upstream APIs</li>
+              <li>Pure Business Logic Layer (Errors,Config but no IO)</li>
+              <li>etc.</li>
+            </ul>
+          </section>
+          <section>
+            <p>You'll want to write them as separate monad stacks so they can be reasoned about and tested separately.</p>
+            <br />
+            <p class="fragment">But then how do we use them together nicely?</p>
+          </section>
+          <section>
+            <pre class="highlight haskell">newtype Db a = Db
+   { unDb :: ExceptT DbError (ReaderT DbEnv IO) a }
+runDb :: DbEnv -> Db a -> IO (Either DbError a)
+
+newtype Logic a = Logic
+  { unLogic :: ExceptT LogicError (Reader LogicEnv) a }
+runLogic :: LogicEnv -> Logic a -> Either LogicError a
+
+<span class="fragment">
+data AppEnv   = AppEnv { appEnvDb :: DbEnv , appEnvLogic :: LogicEnv }
+data AppError = AppDbError DbError | AppLogicError LogicError
+newtype App a = App
+  { unApp :: ExceptT AppError (ReaderT AppEnv IO) a }
+runApp :: AppEnv -> App a -> IO (Either AppError a)
+</span>
+<span class="fragment">
+liftLogic :: Logic a -> App a
+liftLogic l = do
+  c <- asks appEnvLogic
+  either (throwError . AppLogicError) pure $ runLogic c l</span></pre>
+          </section>
+          <section>
+            <p>We should definitely keep our backend monads separate so they are modular.</p>
+            <p>Layers above compose errors and config with sum and product types.</p>
+            <p>To jump up a layer, we have to unwrap our stack completely (with runXXXX) and package it up in the new context.</p>
           </section>
         </section>
         <section>
           <section>
             <h1>Take Away Points</h1>
           </section>
+          <section>
+            <p>Nested monads (e.g IO (Either e a)) are not very fun with having to nest your binds at each step.</p>
+          </section>
+          <section>
+            <p>Monad transformers give us a way to stack monads so we have many monads but only one bind per step.</p>
+          </section>
+          <section>
+            <p>But transformers alone only solves the problem at the binds</p>
+            <p>mtl classes like MonadReader/MonadError/MonadIO get us completely away from caring about the layers.</p>
+          </section>
+          <section>
+            <p>MonadError / ExceptT adds the ability to throw an error and have computation halt early if there is an error</p>
+          </section>
+          <section>
+            <p>MonadReader / ReaderT threads a config through a set of steps without the steps having to do anything.</p>
+          </section>
+          <section>
+            <p>We write our layers with separate monads / errors / envs to keep them modular.</p>
+            <p>Write lift functions to unwrap a layer below and wrap it up with sum/product types of the upper layer.</p>
+          </section>
         </section>
         <section>
           <section>
             <h1>Further Ideas</h1>
           </section>
+          <section>
+            <p>Control.Error</p>
+            <a href="http://hackage.haskell.org/package/errors" target="_blank">http://hackage.haskell.org/package/errors</a>
+          </section>
+          <section>
+            <p>Data.Validation</p>
+            <a href="http://hackage.haskell.org/package/validation" target="_blank">http://hackage.haskell.org/package/validation</a>
+          </section>
+          <section>
+            <p>Control.Lens</p>
+            <a href="http://hackage.haskell.org/package/lens" target="_blank">http://hackage.haskell.org/package/lens</a>
+          </section>
+          <section>
+            <p>Scala</p>
+            <a href="http://eed3si9n.com/learning-scalaz/Combined+Pages.html" target="_blank">Learning Scalaz</a>
+          </section>
         </section>
         <section>
           <section>
             <h1>Further Reading</h1>
+            <ul>
+              <li>Real World Haskell: <a href="http://book.realworldhaskell.org/read/monad-transformers.html" target="_blank">Chaper 18: Monad Transformers</a></li>
+              <li>Real World Haskell: <a href="http://book.realworldhaskell.org/read/error-handling.html" target="_blank">Chapter 19: Error Handling</a>
+              <li>Hackage: <a href="http://hackage.haskell.org/package/mtl" target="_blank">MTL Docs</a>
+              <li>Hackage: <a href="http://hackage.haskell.org/package/transformers" target="_blank">Transformers Docs</a>
+              <li>Github: <a href="https://github.com/benkolera/talk-stacking-your-monads" target="_blank">github.com/benkolera/talk-stacking-your-monads</a></li>
+              <li>Slides: <a href="https://stackingyourmonads.benkolera.com" target="_blank">stackingyourmonads.benkolera.com</a></li>
+            </ul>
           </section>
         </section>
         <section>
           <section>
             <h1>The End!</h1>
             <p>Thanks for listening!</p>
-            <p>Slides and code can be found here: <br/><a href="https://github.com/benkolera/talk-functional-config-and-error-handling">http://tinyurl.com/bk-bfpg-2015-02</a></p>
           </section>
         </section>
       </div>
