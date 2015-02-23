@@ -9,6 +9,7 @@ module Db.TransactionVisa
   , NewTransactionVisa
   , TransactionVisa
   , transactionVisaQuery
+  , allTransactionVisas
   , getTransactionVisa
   , insertTransactionVisa
   , transactionVisaTransactionId
@@ -62,6 +63,9 @@ transactionVisaTable = Table "transaction_visa" $ pTransactionVisa TransactionVi
 
 transactionVisaQuery :: Query TransactionVisaColumn
 transactionVisaQuery = queryTable transactionVisaTable
+
+allTransactionVisas :: Db [TransactionVisa]
+allTransactionVisas = liftQuery transactionVisaQuery
 
 getTransactionVisa :: Int -> Db (Maybe TransactionVisa)
 getTransactionVisa i = liftQueryFirst $ proc () -> do

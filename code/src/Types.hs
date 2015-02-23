@@ -1,8 +1,9 @@
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoImplicitPrelude     #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
 module Types where
 
 import BasePrelude
@@ -11,15 +12,15 @@ import Control.Lens
 import Data.Text    (Text)
 import Data.Time    (Day)
 
-newtype Place = Place Text deriving (Eq,Show)
+newtype Place = Place Text deriving (Eq,Show,IsString)
 makeWrapped ''Place
 
-newtype Currency = Currency Double deriving (Eq,Show)
+newtype Currency = Currency Double deriving (Eq,Show,Num,Fractional)
 makeWrapped ''Currency
 
 data DdMm = DdMm
-  { ddMmDay   :: Integer
-  , ddMmMonth :: Integer
+  { ddMmDay   :: Int
+  , ddMmMonth :: Int
   } deriving (Eq,Show)
 makeLenses ''DdMm
 
@@ -48,12 +49,12 @@ makeLenses ''AtmOperatorFeeDesc
 
 data DirectCreditDesc = DirectCreditDesc
   { _directCreditPlace :: Place
-  , _directCreditBsb   :: Integer
+  , _directCreditBsb   :: Int
   } deriving (Eq,Show)
 makeLenses ''DirectCreditDesc
 
 data InternetTransferDesc = InternetTransferDesc
-  { _internetTransferAccount :: Integer
+  { _internetTransferAccount :: Int
   , _internetTransferRef     :: Text
   } deriving (Eq,Show)
 makeLenses ''InternetTransferDesc
@@ -70,18 +71,13 @@ data TransactionDesc
   deriving (Eq,Show)
 makePrisms ''TransactionDesc
 
--- transactionDescPlace :: Getter TransactionDesc (Maybe Place)
 transactionDescPlace :: Traversal' TransactionDesc Place
 transactionDescPlace =
   _VisaPurchase.visaPurchasePlace
   `failing` _EftposPurchase
+  `failing` _AtmOperatorFee.atmOperatorFeePlace
+  `failing` _DirectCredit.directCreditPlace
   `failing` _AtmWithdrawal
-
--- transactionDescPlace' :: TransactionDesc -> Maybe Place
--- transactionDescPlace' (VisaPurchase v)   = Just $ v^.visaPurchasePlace
--- transactionDescPlace' (EftposPurchase p) = Just p
--- transactionDescPlace' (AtmWithdrawal p)  = Just p
--- transactionDescPlace' _                  = Nothing
 
 data Transaction = Transaction
   { _transactionDate    :: Day

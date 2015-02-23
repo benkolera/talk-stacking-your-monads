@@ -132,7 +132,7 @@ visaPurchaseDesc = VisaPurchaseDesc
 directCreditDesc :: Parser DirectCreditDesc
 directCreditDesc = DirectCreditDesc
   <$> place
-  <*> (spaces *> integer)
+  <*> (spaces *> int)
 
 place :: Parser Place
 place = Place <$> words
@@ -144,7 +144,7 @@ atmOperatorFeeDesc = AtmOperatorFeeDesc
 
 internetTransferDesc :: String -> Parser InternetTransferDesc
 internetTransferDesc s = InternetTransferDesc
-  <$> integer
+  <$> int
   <*> (spaces *> string s *> spaces *> anyText)
 
 countryCode :: Parser CountryCode
@@ -160,7 +160,7 @@ currencyCode = choice
   ]
 
 ddMm :: Parser DdMm
-ddMm = DdMm <$> (integer <* char '/') <*> integer
+ddMm = DdMm <$> (int <* char '/') <*> int
 
 instance FromField Currency where
   parseField bs =

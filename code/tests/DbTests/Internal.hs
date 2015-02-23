@@ -4,9 +4,7 @@ module DbTests.Internal where
 
 import BasePrelude
 
-import           Control.Error                    (headMay)
 import           Control.Monad.Random
-import           Control.Monad.TM
 import qualified Data.ByteString                  as B
 import qualified Data.ByteString.Char8            as B8
 import           Database.PostgreSQL.Simple

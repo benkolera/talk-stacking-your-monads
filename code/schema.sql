@@ -23,7 +23,7 @@ CREATE TABLE transaction (
 , date     DATE             NOT NULL
 , amount   DOUBLE PRECISION NOT NULL -- These should be numerics, but opaleye doesn't support them well.
 , balance  DOUBLE PRECISION NOT NULL -- Floating point numbers and money are bad, mmkay?
-, type     VARCHAR(30)      NOT NULL CHECK (type in
+, type     VARCHAR(50)      NOT NULL CHECK (type in
   ('visa','eftpos','foreign_currency_conversion_fee','atm_operator_fee'
   ,'atm_withdrawal','direct_credit','internet_transfer_credit'
   ,'internet_transfer_debit'))

@@ -9,6 +9,7 @@ module Db.TransactionInternetTransfer
   , NewTransactionInternetTransfer
   , TransactionInternetTransfer
   , transactionInternetTransferQuery
+  , allTransactionInternetTransfers
   , getTransactionInternetTransfer
   , insertTransactionInternetTransfer
   , transactionInternetTransferTransactionId
@@ -56,6 +57,9 @@ transactionInternetTransferTable = Table "transaction_internet_transfer" $ pTran
 
 transactionInternetTransferQuery :: Query TransactionInternetTransferColumn
 transactionInternetTransferQuery = queryTable transactionInternetTransferTable
+
+allTransactionInternetTransfers :: Db [TransactionInternetTransfer]
+allTransactionInternetTransfers = liftQuery transactionInternetTransferQuery
 
 getTransactionInternetTransfer :: Int -> Db (Maybe TransactionInternetTransfer)
 getTransactionInternetTransfer i = liftQueryFirst $ proc () -> do

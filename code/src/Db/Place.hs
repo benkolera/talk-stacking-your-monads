@@ -9,6 +9,7 @@ module Db.Place
   , NewPlace
   , Place
   , placeQuery
+  , allPlaces
   , getPlace
   , insertPlace
   , upsertPlaceByName
@@ -51,6 +52,9 @@ placeTable = Table "place" $ pPlace Place
 
 placeQuery :: Query PlaceColumn
 placeQuery = queryTable placeTable
+
+allPlaces :: Db [Place]
+allPlaces = liftQuery placeQuery
 
 insertPlace :: NewPlace -> Db Int
 insertPlace =

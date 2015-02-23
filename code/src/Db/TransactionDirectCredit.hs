@@ -9,6 +9,7 @@ module Db.TransactionDirectCredit
   , NewTransactionDirectCredit
   , TransactionDirectCredit
   , transactionDirectCreditQuery
+  , allTransactionDirectCredits
   , getTransactionDirectCredit
   , insertTransactionDirectCredit
   , transactionDirectCreditTransactionId
@@ -50,6 +51,9 @@ transactionDirectCreditTable = Table "transaction_direct_credit" $ pTransactionD
 
 transactionDirectCreditQuery :: Query TransactionDirectCreditColumn
 transactionDirectCreditQuery = queryTable transactionDirectCreditTable
+
+allTransactionDirectCredits :: Db [TransactionDirectCredit]
+allTransactionDirectCredits = liftQuery transactionDirectCreditQuery
 
 getTransactionDirectCredit :: Int -> Db (Maybe TransactionDirectCredit)
 getTransactionDirectCredit i = liftQueryFirst $ proc () -> do

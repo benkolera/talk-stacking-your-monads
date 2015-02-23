@@ -9,6 +9,7 @@ module Db.TransactionAtmOperatorFee
   , NewTransactionAtmOperatorFee
   , TransactionAtmOperatorFee
   , transactionAtmOperatorFeeQuery
+  , allTransactionAtmOperatorFees
   , getTransactionAtmOperatorFee
   , insertTransactionAtmOperatorFee
   , transactionAtmOperatorFeeTransactionId
@@ -51,6 +52,9 @@ transactionAtmOperatorFeeTable = Table "transaction_atm_operator_fee" $ pTransac
 
 transactionAtmOperatorFeeQuery :: Query TransactionAtmOperatorFeeColumn
 transactionAtmOperatorFeeQuery = queryTable transactionAtmOperatorFeeTable
+
+allTransactionAtmOperatorFees :: Db [TransactionAtmOperatorFee]
+allTransactionAtmOperatorFees = liftQuery transactionAtmOperatorFeeQuery
 
 getTransactionAtmOperatorFee :: Int -> Db (Maybe TransactionAtmOperatorFee)
 getTransactionAtmOperatorFee i = liftQueryFirst $ proc () -> do

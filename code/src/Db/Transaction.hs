@@ -9,6 +9,7 @@ module Db.Transaction
   , NewTransaction
   , Transaction
   , transactionQuery
+  , allTransactions
   , getTransaction
   , insertTransaction
   , transactionId
@@ -77,6 +78,9 @@ transactionTable = Table "transaction" $ pTransaction Transaction
 
 transactionQuery :: Query TransactionColumn
 transactionQuery = queryTable transactionTable
+
+allTransactions :: Db [Transaction]
+allTransactions = liftQuery transactionQuery
 
 insertTransaction :: NewTransaction -> Db Int
 insertTransaction =
