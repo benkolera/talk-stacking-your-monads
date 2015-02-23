@@ -4,10 +4,10 @@
   <head>
     <meta charset="utf-8">
 
-    <title>reveal.js - The HTML Presentation Framework</title>
+    <title>Stacking your Monads</title>
 
-    <meta name="description" content="A framework for easily creating beautiful presentations using HTML">
-    <meta name="author" content="Hakim El Hattab">
+    <meta name="description" content="A guide to layering configuration and error handling in FP applications.">
+    <meta name="author" content="Ben Kolera">
 
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="css/bens.css">
 
     <!-- Code syntax highlighting -->
-    <link rel="stylesheet" href="lib/css/tomorrow-night-blue.css">
+    <link rel="stylesheet" href="lib/css/solarized-light.css">
 
     <!-- Printing and PDF exports -->
     <script>
@@ -48,12 +48,20 @@
             <p>
               <small>Created by <a href="http://twitter.com/benkolera">@benkolera</a> for the 2015-02-24 <a href="http://bfpg.org">BFPG</a> meetup.</small>
             </p>
+            <aside class="notes">
+              <p>Hi everyone, thanks for coming!</p>
+              <p>Tonight I'm going to talk to you about how we configure and handle error in our FP code at iseek.</p>
+            </aside>
           </div>
         </section>
         <section>
           <section>
             <h1>About Me / iseek</h1>
             <p>Dev Team Manager at iseek Communications</p>
+            <aside class="notes">
+              <p>But first! A bit about me & iseek.</p>
+              <p>I'm the dev manager at iseek communications</p>
+            </aside>
           </section>
           <section>
             <p>We build:</p>
@@ -62,12 +70,28 @@
               <li>Data Centers</li>
               <li>Cloud Infrastructure</li>
             </ul>
+            <aside class="notes">
+              <p>We also sponsor the pizza with Skedulo! :)</p>
+            </aside>
           </section>
           <section>
             <p>Lots of distributed APIs, some written on (bad) vendor APIs</p>
+            <aside class="notes">
+              <p>Glue together lots of distributed APIs</p>
+              <p>Some of these being less-than ideal vendor APIs.</p>
+            </aside>
           </section>
           <section>
-            <p>Types and FP keep us sane!</p>
+            <p>We are a team of three looking after a diverse and ever growing feature set.</p>
+          </section>
+          <section>
+            <p>We love haskell: Types + FP help keep us sane</p>
+          </section>
+          <section>
+            <p>Types help us encode our assumptions in the type system.</p>
+            <p>Makes it much easier to reason about our code.</p>
+            <p>Can refactor and change things without fear because the compiler helps us.</p>
+            <p>Has allowed us to move faster with less bugs than our perl/java days.</p>
           </section>
         </section>
         <section>
@@ -79,13 +103,13 @@
             <p>This often involves:</p>
             <ul>
               <li>Threading configuration through your app (nicely)</li>
-              <li>Catching exceptions ASAP to avoid their stealthy ickiness</li>
+              <li>Catching exceptions ASAP to make them explicit</li>
               <li>Representing failure modes in your types so they are easier to reason about</li>
             </ul>
           </section>
           <section>
             <h2>But!</h2>
-            <p>This quickly becomes a rabbit hole of weird things like MonadTransformers and typeclasses like MonadReader</p>
+            <p>This quickly becomes a rabbit hole of weird things like MonadTransformers and typeclasses like MonadReader.</p>
           </section>
           <section>
             <p>This talk intends to help demystify these things and give the motivations of the current status quo.</p>
@@ -113,23 +137,33 @@
             <h1>Catching Exceptions: Attempt 1</h1>
           </section>
           <section>
-            <pre><code>λ&gt;:t readFile
-readFile "bad" :: FilePath -&gt; IO String </code></pre>
+            <pre class="highlight haskell">λ&gt;:t readFile
+readFile "bads" :: FilePath -&gt; IO String
+
+<span class="fragment" data-fragment-index=0>
+λ&gt; readFile "bads"
+** Exception: bads: openFile: does not exist (No such file or directory)</span></pre>
             <br />
-            <p>Failure is invisible our types. Could do better.</p>
-          </section>
-          <section>
-            <pre><code>λ&gt; readFile "bad"
-*** Exception: bad: openFile: does not exist (No such file or directory)</code></pre>
+            <p class="fragment" data-fragment-index=0>Failure is invisible our types. Could do better.</p>
+            <aside class="notes">
+              <p>Throughout the libraries that we use we have IO actions that look like this.</p>
+              <p>Where the type signature says nothing about how this action can fail.</p>
+              <p>This is fine to reason about with a single action, but quickly doesn't scale as you compose more and more actions together.</p>
+            </aside>
           </section>
           <section>
             <pre class="highlight haskell">safeLoadFile :: FilePath -> IO (Either IOException String)
 safeLoadFile f = (<span class="fragment">Right <$> </span>readFile f) <span class="fragment">`catch` (\ e -> pure (Left e) )</span></span>
 
-<span class="fragment">fileText "booboo"
--- Left booboo: openFile: does not exist (No such file or directory)
+<span class="fragment">fileText "bads"
+-- Left bads: openFile: does not exist (No such file or directory)
 fileText "stuff.txt"
 -- Right "Stuff"</span></pre>
+            <aside class="notes">
+              <p>So we make a start like this, because we know either is great for representing a computation that can fail with a reason.</p>
+              <p>First we map over the IO action to note the value returned was a success.</p>
+              <p>And then we catch the exception that may have been raised and wrap it up in a Left</p>
+            </aside>
           </section>
           <section>
             <table width="500px" class="table-monad monad-colour1 fragment highlight-red" data-fragment-index=0>
@@ -149,11 +183,17 @@ fileText "stuff.txt"
             <br />
             <pre class="highlight haskell">fileChars :: FilePath -> IO (Either IOException Int)
 fileChars = <span class="fragment" data-fragment-index=0>fmap </span> <span class="fragment" data-fragment-index=1>( fmap <span class="fragment" data-fragment-index=2>length</span> )</span> . safeLoadFile</pre>
-            <pre class="highlight haskell fragment">fileChars "booboo"
--- Left booboo: openFile: does not exist (No such file or directory)
+            <pre class="highlight haskell fragment">fileChars "bads"
+-- Left bads: openFile: does not exist (No such file or directory)
 
 fileChars "stuff.txt"
 --Right 5</pre>
+            <aside class="notes">
+              <p>But then what do we do when we need to use the value in our context? Like counting the characters in a file?</p>
+              <p>First we transform the IO context with fmap</p>
+              <p>Then we peek inside our either to transform the string on the right.</p>
+              <p>With our length function to calculate what we wanted.</p>
+            </aside>
           </section>
           <section>
             <table width="500px" class="table-monad monad-colour1 fragment highlight-red" data-fragment-index=0>
@@ -180,11 +220,20 @@ fileChars "stuff.txt"
             <br />
             <pre class="highlight haskell">safePrintFile :: FilePath -> IO (Either IOException ())
 safePrintFile f = safeLoadFile f <span class="fragment" data-fragment-index=0>&gt;&gt;= </span><span class="fragment" data-fragment-index=1>traverse <span class="fragment" data-fragment-index=2>putStrLn</span></span></pre>
-            <pre class="highlight haskell fragment" data-fragment-index=2>fileChars "booboo"
+            <pre class="highlight haskell fragment" data-fragment-index=2>safePrintFile "booboo"
 -- Left booboo: openFile: does not exist (No such file or directory)
 
-fileChars "stuff.txt"
---Right 5</pre>
+safePrintFile "stuff.txt"
+Stuff
+-- Right ()</pre>
+            <aside class="notes">
+              <p>How would we do something monadic like put the results of our safeLoadFile to stdOut?</p>
+              <p>Because we need to generate an IO step next, we need to use bind.</p>
+              <p>Now we need a function from Either -> IO Either.</p>
+              <p>Which as a topic to explain in another talk, we can use traverse.</p>
+              <p>And at this point we need a String -> IO () which we can put putStrLn</p>
+              <p>Phew! That was a lot of work to use IO Either as a monad!</p>
+            </aside>
           </section>
           <section>
             <h1>Too many layers!</h1>
@@ -193,7 +242,32 @@ fileChars "stuff.txt"
         </section>
         <section>
           <section>
-            <h1>Monad Transformers & EitherT</h1>
+            <h1>Monad Transformers</h1>
+          </section>
+          <section>
+            <p>Gives us a way to stack two monads on top of each other and have them act as a single monad.</p>
+          </section>
+          <section>
+            <p>The transformer has a monad instance which does the unwrapping and juggling of the levels each bind so you don't have to.</p>
+          </section>
+          <section>
+            <p>There is no way to do these in general (for any Monad), so there exists a transformer equivalent for every monad instance (except IO!).</p>
+          </section>
+          <section>
+            <p>Follows the basic pattern of having:
+              <ul>
+                <li>A constructor to take your layered monad -> transformer <br/><pre class="highlight haskell">EitherT :: IO (Either e a) -> EitherT e IO a</pre></li>
+                <li>A run function to go the other way <br /><pre class="highlight haskell">runEitherT :: EitherT e IO a -> IO (Either e a)</pre></li>
+              </ul>
+            </p>
+          </section>
+          <section>
+            <p>This will make more sense soon! :)</p>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h1>EitherT</h1>
           </section>
           <section>
             <table class="table-centered">
@@ -274,12 +348,6 @@ Right ()</pre>
             <p>This stack behaves as though it has the features of both with a single bind each step</p>
             <p>We now have to promote an action from below up to the next level.</p>
             <p>Constructing the actions is still way too hard</p>
-          </section>
-        </section>
-        <section>
-          <section>
-            <img src="/images/detour.png" width="640" height="320" class="img-no-border" />
-            <p>Any questions at this point?</p>
           </section>
         </section>
         <section>
