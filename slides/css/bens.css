@@ -32,12 +32,16 @@ code pre {
     box-shadow: 0 0 0 rgba(0,0,0,0);
 }
 
+.reveal pre.highlight {
+    zoom: 1.2;
+}
+
 .reveal .table-monad td {
     text-align: center;
     border: 1px solid;
     color: black;
 }
-.reveal .slides section .fragment.highlight-red.visible.current-fragment span {
+.reveal .slides section .fragment.highlight-red.visible span {
   color: #ff2c2d !important;
 }
 

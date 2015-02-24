@@ -347,7 +347,6 @@ Left "busted"
 Hello World
 Right ()</pre>
           </section>
-          </section>
           <section>
             <h2>liftIO</h2>
             <p>Because IO can only ever be at the base, there is a special class for lifting IO into a transformer.</p>
@@ -543,6 +542,7 @@ runApp e = runExceptT . flip runReaderT e . unApp</pre>
             </aside>
           </section>
           <section>
+            <h2>MonadReader</h2>
             <pre class="highlight haskell">
 ask  :: MonadReader r m => m r
 asks :: MonadReader r m => (r -> a) -> m a
@@ -553,8 +553,15 @@ asks :: MonadReader r m => (r -> a) -> m a
   pure (r,rUpper)
 
 ("Hello World","HELLO WORLD")</span></pre>
+            <aside class="notes">
+              <p>MonadReader gives us two main function, ask and asks.</p>
+              <p>ask returns the config in our transformer context</p>
+              <p>asks takes a function to transform that config and returns that value in context.</p>
+              <p>It works out in practice like this.</p>
+            </aside>
           </section>
           <section>
+            <h2>MonadError</h2>
             <pre class="highlight haskell">throwError :: MonadError e m => e -> m a
 catchError :: MonadError e m => m a -> (e -> m a) -> m a
 
@@ -569,24 +576,34 @@ Left "Bzzt"</span>
 
 ERROR: Bzzt
 Right "All ok now!"</span></pre>
+            <aside class="notes">
+              <p>Monad error gives us a way to throw and catch errors in our context.</p>
+            </aside>
           </section>
           <section>
             <h2>BAM! And the layers are gone!</h2>
-            <pre class="highlight haskell">loadPerson :: Int -> App (Maybe (Person,Address))
-loadPerson i = do
-  pMay <- doQuery "SELECT * FROM person WHERE id = ?" (Only i)
-  for pMay $ \ p -> do
-    aMay <- doQuery "SELECT * FROM address WHERE person_id = ?" (Only i)
-    a    <- maybe (throwError (MissingPersonAddress i)) pure aMay
-    pure (p,a)
-
-doQuery :: (FromRow a,ToRow i) => Query -> i -> Db a
+            <pre class="highlight haskell">
+doQuery :: (FromRow a,ToRow i) => Query -> i -> App (Maybe a)
 doQuery q i = do
   c <- asks _dbEnvConnection
   -- This is really ugly, but we'll hide it in real code
   e <- liftIO $
     (Right <$> query c q i) `catch` (pure . Left . DbException)
-  either throwError pure $ e</pre>
+  either throwError pure $ e
+
+<span class="fragment">loadPerson :: Int -> App (Maybe (Person,Address))
+loadPerson i = do
+  pMay <- doQuery "SELECT * FROM person WHERE id = ?" (Only i)
+  for pMay $ \ p -> do
+    aMay <- doQuery "SELECT * FROM address WHERE person_id = ?" (Only i)
+    a    <- maybe (throwError (MissingPersonAddress i)) pure aMay
+    pure (p,a) </span></pre>
+            <aside class="notes">
+              <p>So if we want to write functions with our new abstractions it goes like this.</p>
+              <p>We use asks to grab outconnection from our env.</p>
+              <p>And catch our exception into an either like we did before and throwing the left if there is one.</p>
+              <p>We can then use our doQuery as a single app context that we can bind against.</p>
+            </aside>
           </section>
           <section>
             <p>We meld our monad transformer into one thing to hide some details.</p>
@@ -636,11 +653,13 @@ liftLogic :: Logic a -> App a
 liftLogic l = do
   c <- asks appEnvLogic
   either (throwError . AppLogicError) pure $ runLogic c l</span></pre>
-          </section>
-          <section>
-            <p>We should definitely keep our backend monads separate so they are modular.</p>
-            <p>Layers above compose errors and config with sum and product types.</p>
-            <p>To jump up a layer, we have to unwrap our stack completely (with runXXXX) and package it up in the new context.</p>
+            <aside class="notes">
+              <p>Say we are writing an application with a Db context and a pure logic context.</p>
+              <p>We create a context above wrapping the errors in a sum type.</p>
+              <p>We wrap our config with a product type.</p>
+              <p>And lift a context below by entirely unwrapping it and packaging up in our parent context.</p>
+              <p>Like monad transformers themselves, you need to know about the structure of the stack to do this, so you have to write it.</p>
+            </aside>
           </section>
         </section>
         <section>
@@ -720,6 +739,7 @@ liftLogic l = do
       // Full list of configuration options available at:
       // https://github.com/hakimel/reveal.js#configuration
       Reveal.initialize({
+        maxScale: 2,
         controls: true,
         progress: true,
         history: true,
