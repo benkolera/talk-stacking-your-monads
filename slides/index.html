@@ -336,6 +336,19 @@ lift :: (MonadTrans t, Monad m) => m a -> t m a</pre>
   lift = EitherT . liftM Right</pre></div>
           </section>
           <section>
+            <pre class="highlight haskell">λ> runEitherT $
+              EitherT (pure . Left $ "busted") >>=
+<span class="fragment highlight-red" data-fragment-index=0><span class="fragment fade-out fade-out-no-display" data-fragment-index=1>EitherT . fmap Right</span></span><span class="fragment fade-in-no-display" data-fragment-index=1>lift</span> . putStrLn
+Left "busted"
+
+λ> runEitherT $
+  pure "Hello World" >>=
+    <span class="fragment highlight-red" data-fragment-index=0><span class="fragment fade-out fade-out-no-display" data-fragment-index=1>EitherT . fmap Right</span></span><span class="fragment" data-fragment-index=1>lift</span> . putStrLn
+Hello World
+Right ()</pre>
+          </section>
+          </section>
+          <section>
             <h2>liftIO</h2>
             <p>Because IO can only ever be at the base, there is a special class for lifting IO into a transformer.</p>
             <pre class="highlight haskell fragment">λ> runEitherT $ pure "Hello World" >>= liftIO . putStrLn

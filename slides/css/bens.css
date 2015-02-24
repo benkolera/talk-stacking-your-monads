@@ -37,6 +37,9 @@ code pre {
     border: 1px solid;
     color: black;
 }
+.reveal .slides section .fragment.highlight-red.visible span {
+  color: #ff2c2d !important;
+}
 
 .table-monad.highlight-red.visible.current-fragment , .table-monad td.highlight-red.visible.current-fragment {
     background: #f47e7d;
