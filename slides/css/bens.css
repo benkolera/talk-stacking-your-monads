@@ -37,7 +37,7 @@ code pre {
     border: 1px solid;
     color: black;
 }
-.reveal .slides section .fragment.highlight-red.visible span {
+.reveal .slides section .fragment.highlight-red.visible.current-fragment span {
   color: #ff2c2d !important;
 }
 

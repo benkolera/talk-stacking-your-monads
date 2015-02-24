@@ -220,8 +220,8 @@ fileChars "stuff.txt"
             <br />
             <pre class="highlight haskell">safePrintFile :: FilePath -> IO (Either IOException ())
 safePrintFile f = safeLoadFile f <span class="fragment" data-fragment-index=0>&gt;&gt;= </span><span class="fragment" data-fragment-index=1>traverse <span class="fragment" data-fragment-index=2>putStrLn</span></span></pre>
-            <pre class="highlight haskell fragment" data-fragment-index=2>safePrintFile "booboo"
--- Left booboo: openFile: does not exist (No such file or directory)
+            <pre class="highlight haskell fragment" data-fragment-index=2>safePrintFile "bads"
+-- Left bads: openFile: does not exist (No such file or directory)
 
 safePrintFile "stuff.txt"
 Stuff
@@ -248,7 +248,7 @@ Stuff
             <p>Gives us a way to stack two monads on top of each other and have them act as a single monad.</p>
           </section>
           <section>
-            <p>The transformer has a monad instance which does the unwrapping and juggling of the levels each bind so you don't have to.</p>
+            <p>The transformer has a monad instance which does the unwrapping and juggles the layers in a single bind.</p>
           </section>
           <section>
             <p>There is no way to do these in general (for any Monad), so there exists a transformer equivalent for every monad instance (except IO!).</p>
@@ -337,13 +337,13 @@ lift :: (MonadTrans t, Monad m) => m a -> t m a</pre>
           </section>
           <section>
             <pre class="highlight haskell">λ> runEitherT $
-              EitherT (pure . Left $ "busted") >>=
-<span class="fragment highlight-red" data-fragment-index=0><span class="fragment fade-out fade-out-no-display" data-fragment-index=1>EitherT . fmap Right</span></span><span class="fragment fade-in-no-display" data-fragment-index=1>lift</span> . putStrLn
+  EitherT (pure . Left $ "busted") >>=
+    <span class="fragment highlight-red" data-fragment-index=0><span class="fragment fade-out fade-out-no-display" data-fragment-index=1>EitherT . fmap Right</span></span><span class="fragment fade-in-no-display" data-fragment-index=1>lift</span> . putStrLn
 Left "busted"
 
 λ> runEitherT $
   pure "Hello World" >>=
-    <span class="fragment highlight-red" data-fragment-index=0><span class="fragment fade-out fade-out-no-display" data-fragment-index=1>EitherT . fmap Right</span></span><span class="fragment" data-fragment-index=1>lift</span> . putStrLn
+    <span class="fragment highlight-red" data-fragment-index=0><span class="fragment fade-out fade-out-no-display" data-fragment-index=1>EitherT . fmap Right</span></span><span class="fragment fade-in-no-display" data-fragment-index=1>lift</span> . putStrLn
 Hello World
 Right ()</pre>
           </section>
@@ -358,9 +358,9 @@ Right ()</pre>
           <section>
             <h2>So?</h2>
             <p>We replaced nested monads with a transformer stack</p>
-            <p>This stack behaves as though it has the features of both with a single bind each step</p>
-            <p>We now have to promote an action from below up to the next level.</p>
-            <p>Constructing the actions is still way too hard</p>
+            <p>EitherT means that we only have a single bind per step.</p>
+            <p>But still gives us a stack that will stop going to the next step if computation fails.</p>
+            <p>Constructing the transformer and lifting is a pain</p>
           </section>
         </section>
         <section>
@@ -380,6 +380,10 @@ queryAllOfTheThings conn = do
 queryForC :: Connection -> OtherInput -> IO [Thing]
 queryForC conn input =
   queryForSomethingElse conn (pureCalculationWithInput input)</span></pre>
+            <aside class="notes">
+              <p>Everyone has probably written code like this where they have a somewhat ugly pattern of passing configuration around each bit.</p>
+              <p>Especially ugly when there are layers that don't need that config but need to take it to pass it to a thing below.</p>
+            </aside>
           </section>
           <section>
             <pre class="highlight haskell">λ> :t ReaderT
@@ -402,10 +406,16 @@ ReaderT :: (r -> m a) -> ReaderT r m a</pre>
                 </td>
               </tr>
             </table>
+            <aside class="notes">
+              <p>ReaderT to the rescue!</p>
+              <p>Think of reader T as a function waiting to get its configuration and at that point it'll produce a m a. </p>
+              <p>Bind composes these functions together so the result is a single thing that we have to put config into.</p>
+              <p>Meaning we only have to insert the config once and care about it in our stack only when we need to.</p>
+            </aside>
           </section>
           <section>
             <pre class="highlight haskell">queryAllOfTheThings :: <span class="fragment fade-out fade-out-no-display" data-fragment-index=0>Connection -> IO [Thing]</span><span class="fragment fade-in-no-display" data-fragment-index=0>ReaderT Connection IO [Thing]</span>
-queryAllOfTheThings = do
+queryAllOfTheThings <span class="fragment fade-out fade-out-no-display" data-fragment-index=0>conn </span>= do
   as <- queryForA <span class="fragment fade-out fade-out-no-display" data-fragment-index=0>conn </span>...
   as <- queryForB <span class="fragment fade-out fade-out-no-display" data-fragment-index=0>conn </span>...
   as <- queryForC <span class="fragment fade-out fade-out-no-display" data-fragment-index=0>conn </span>...
@@ -421,6 +431,12 @@ queryForSomethingElse input = ReaderT (doQuery ...)
 
 doQuery :: Query -> Connection -> IO [Thing]
 doQuery = ...</span></pre>
+            <aside class="notes">
+              <p>We can change our function from something explicitly taking a Connection to implicitly taking the connection with reader.</p>
+              <p>We then stop having to hand everything down the layers. Which is really awesome for the layers that don't need it.</p>
+              <p>And where we actually need the connection, we construct a readerT that will use the connection and return our IO action when we need it.</p>
+              <p>ReaderT bind does all of the wiring for us.</p>
+            </aside>
           </section>
           <section>
             <pre class="highlight haskell">λ> :t runReaderT
@@ -437,8 +453,8 @@ HELLO WORLD</pre>
           </section>
           <section>
             <p>ReaderT is something we can stack on which can access a configuration at each step</p>
-            <p>Hides away the passing of configuration through the layers</p>
-            <p>Run function wires config through every step and returns the resulting monad</p>
+            <p>Hides away the passing of configuration through the layers because this is handled by bind.</p>
+            <p>Run passes the config into our ReaderT and returns our underlaying action.</p>
           </section>
         </section>
         <section>
@@ -449,19 +465,38 @@ HELLO WORLD</pre>
             <p>The side-effecting parts of our app are going to need config and a way to fail (without exceptions!)</p>
           </section>
           <section>
-            <pre class="highlight haskell">type App e c a = App (<span class="fragment fade-out fade-out-no-display" data-fragment-index=1><span class="fragment highlight-red" data-fragment-index=0>EitherT</span></span><span class="fragment fade-in fade-in-no-display" data-fragment-index=1>ExceptT</span> e (ReaderT c IO) a)</pre>
+            <pre class="highlight haskell">newtype App e c a = App (<span class="fragment fade-out fade-out-no-display" data-fragment-index=5><span class="fragment highlight-red" data-fragment-index=4><span class="fragment highlight-red" data-fragment-index=0>EitherT</span></span></span><span class="fragment fade-in fade-in-no-display" data-fragment-index=5>ExceptT</span> e (<span class="fragment highlight-red" data-fragment-index=1>ReaderT c</span> <span class="fragment highlight-red" data-fragment-index=2>IO</span>) a)</pre>
+            <table class="table-monad monad-colour1">
+              <tr><td class="fragment highlight-red" data-fragment-index=0><span class="fragment fade-out fade-out-no-display" data-fragment-index=5>EitherT</span><span class="fragment fade-in-no-display" data-fragment-index=5>ExceptT</span> e</td></tr>
+              <tr><td class="fragment highlight-red" data-fragment-index=1>ReaderT c</td></tr>
+              <tr><td class="fragment highlight-red" data-fragment-index=2>IO</td></tr>
+            </table>
+            <aside class="notes">
+              <p>So at this point we have an idea that we want something with the shape of this.</p>
+              <p>EitherT for failing with an e</p>
+              <p>ReaderT for implicitly requiring a config c</p>
+              <p>And IO at the bottom so that we can do side effects.</p>
+              <p>Except that for reasons explained later, we're using ExceptT, which is exactly the same as EitherT</p>
+            </aside>
           </section>
           <section>
             <pre class="highlight haskell">data AppError = DbSqlException SqlError | MissingFoo | ...
 
-type App c a = App (ExceptT AppError (ReaderT c IO) a)</pre>
+newtype App c a = App (ExceptT AppError (ReaderT c IO) a)</pre>
+            <aside class="notes">
+              <p>Now we describe what our errors can be, using a sum type of all of the possibilities.</p>
+            </aside>
           </section>
           <section>
             <pre class="highlight haskell">data AppError = DbSqlException SqlError | MissingFoo | ...
 
 data AppEnv = AppEnv { appEnvConnection :: Connection }
 
-type App a = App (ExceptT AppError (ReaderT AppEnv IO) a)</pre>
+newtype App a = App (ExceptT AppError (ReaderT AppEnv IO) a)</pre>
+            <aside class="notes">
+              <p>And then define what our configuration is with a product type.</p>
+              <p>And now we have something of kind * -> * so we can make a monad!</p>
+            </aside>
           </section>
           <section>
             <pre class="highlight haskell">{-# LANGUAGE GeneralisedNewTypeDeriving #-}
@@ -470,7 +505,7 @@ data AppError = DbSqlException SqlError | MissingFoo | ...
 
 data AppEnv = AppEnv { appEnvConnection :: Connection }
 
-type App a = App (ExceptT AppError (ReaderT AppEnv IO) a)
+newtype App a = App (ExceptT AppError (ReaderT AppEnv IO) a)
   deriving
     ( Functor
     , Applicative
@@ -479,6 +514,10 @@ type App a = App (ExceptT AppError (ReaderT AppEnv IO) a)
     , MonadError AppError
     , MonadIO
     ) </pre>
+            <aside class="notes">
+              <p>And thankfully GHC has an extension to generate all of these helpful instances for you.</p>
+              <p>We'll get onto what MonadError,MonadReader are soon.</p>
+            </aside>
           </section>
           <section>
             <pre class="highlight haskell">{-# LANGUAGE GeneralisedNewTypeDeriving #-}
@@ -487,7 +526,7 @@ data AppError = DbSqlException SqlError | MissingFoo | ...
 
 data AppEnv = AppEnv { appEnvConnection :: Connection }
 
-type App a = App { unApp :: ExceptT AppError (ReaderT AppEnv IO) a }
+newtype App a = App { unApp :: ExceptT AppError (ReaderT AppEnv IO) a }
   deriving
     ( Functor
     , Applicative
@@ -499,6 +538,9 @@ type App a = App { unApp :: ExceptT AppError (ReaderT AppEnv IO) a }
 
 runApp :: AppEnv -> App a -> IO (Either AppError a)
 runApp e = runExceptT . flip runReaderT e . unApp</pre>
+            <aside class="notes">
+              <p>Final bit of book-keeping is our run function to pool off all of the layers.</p>
+            </aside>
           </section>
           <section>
             <pre class="highlight haskell">
