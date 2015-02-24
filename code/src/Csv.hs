@@ -89,9 +89,6 @@ parseHeader hs = throwEither . first CsvHeaderParseError $ do
 words :: Parser T.Text
 words = T.unwords . fmap T.pack <$> sepEndBy1 (many1 alphaNum) space
 
-integer :: Parser Integer
-integer = read <$> many1 digit
-
 int :: Parser Int
 int = read <$> many1 digit
 
