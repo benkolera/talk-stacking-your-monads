@@ -35,3 +35,14 @@ psql transaction_importer < schema.sql
 Then fill in app.cfg with a user,database (and an optional port,password and host)
 
 cabal run -- tests/csv/ok.csv
+
+What does it do?
+----------------
+The idea is that it was supposed to parse a CSV that I get from my internet
+banking and insert the transactions into a database for reporting.
+
+This involves reading the files off disk and parsing them in our Csv monad.
+
+Then the get inserted into our normalised table stucture in the Db monad.
+
+For an example of the csv, look in tests/csv/ok.csv
