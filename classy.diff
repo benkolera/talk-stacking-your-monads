@@ -1,0 +1,708 @@
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/Main.hs code-classy/Main.hs
+--- code/Main.hs	2015-02-25 09:20:09.000000000 +1000
++++ code-classy/Main.hs	2015-06-06 18:09:37.000000000 +1000
+@@ -3,6 +3,8 @@
+ module Main where
+ 
+ import BasePrelude                hiding (left)
++import Control.Monad.Except       (ExceptT,runExceptT)
++import Control.Monad.Reader       (ReaderT,runReaderT)
+ import Data.Configurator
+ import Data.Configurator.Types    (Config)
+ import Database.PostgreSQL.Simple (ConnectInfo (..), Connection, connect,
+@@ -20,6 +22,9 @@
+   fn   <- headMay args ?? usage
+   e <- scriptIO . runApp env . loadAndInsert $ fn
+   scriptIO . putStrLn . either appErrorString successString $ e
++  where
++    runApp :: AppEnv -> ExceptT AppError (ReaderT AppEnv IO) a -> IO (Either AppError a)
++    runApp env = flip runReaderT env . runExceptT
+ 
+ loadConfig :: Script AppEnv
+ loadConfig = fmapLT ("There were problems loading the config:\n" <>) $ do
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/App.hs code-classy/src/App.hs
+--- code/src/App.hs	2015-02-25 08:46:38.000000000 +1000
++++ code-classy/src/App.hs	2015-06-06 18:33:00.000000000 +1000
+@@ -3,6 +3,7 @@
+ {-# LANGUAGE MultiParamTypeClasses      #-}
+ {-# LANGUAGE NoImplicitPrelude          #-}
+ {-# LANGUAGE TemplateHaskell            #-}
++{-# LANGUAGE ConstraintKinds            #-}
+ module App where
+ 
+ import BasePrelude hiding (first)
+@@ -18,36 +19,27 @@
+ import Utils
+ 
+ data AppEnv   = AppEnv { _appEnvDb :: DbEnv }
+-makeLenses ''AppEnv
++makeClassy ''AppEnv
+ data AppError = AppCsvError CsvError | AppDbError DbError
+-makePrisms ''AppError
++makeClassyPrisms ''AppError
+ 
+-newtype App a = App
+-  { unApp :: (ReaderT AppEnv (ExceptT AppError IO) a)
+-  } deriving
+-    ( Functor
+-    , Applicative
+-    , Monad
+-    , MonadReader AppEnv
+-    , MonadIO
+-    , MonadError AppError
+-    )
++instance AsDbError AppError where
++  _DbError = _AppDbError . _DbError
+ 
+-runApp :: AppEnv -> App a -> IO (Either AppError a)
+-runApp e = runExceptT . flip runReaderT e . unApp
++instance AsCsvError AppError where
++  _CsvError = _AppCsvError . _CsvError
+ 
+-loadAndInsert :: FilePath -> App [Int]
+-loadAndInsert p = do
+-  xacts <- liftCsv $ readTransactions p
+-  liftDb $ insertTransactions xacts
++instance HasDbEnv AppEnv where
++  dbEnv = appEnvDb . dbEnv
++
++type CanApp c e m =
++  ( CanDb c e m
++  , CanCsv e m
++  , AsAppError e
++  , HasAppEnv c
++  )
+ 
+-liftCsv :: (Applicative m,MonadError AppError m,MonadIO m) => Csv a -> m a
+-liftCsv c = do
+-  res <- liftIO $ runCsv c
+-  throwEither . first AppCsvError $ res
+-
+-liftDb :: (Applicative m,MonadReader AppEnv m, MonadError AppError m,MonadIO m) => Db a -> m a
+-liftDb c = do
+-  e <- view appEnvDb
+-  res <- liftIO $ runDb e c
+-  throwEither . first AppDbError $ res
++loadAndInsert :: CanApp c e m => FilePath -> m [Int]
++loadAndInsert p = do
++  xacts <- readTransactions p
++  insertTransactions xacts
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Csv.hs code-classy/src/Csv.hs
+--- code/src/Csv.hs	2015-06-06 11:16:27.000000000 +1000
++++ code-classy/src/Csv.hs	2015-06-06 18:13:33.000000000 +1000
+@@ -5,21 +5,21 @@
+ {-# LANGUAGE NoImplicitPrelude          #-}
+ {-# LANGUAGE OverloadedStrings          #-}
+ {-# LANGUAGE TemplateHaskell            #-}
++{-# LANGUAGE ConstraintKinds            #-}
++
+ module Csv
+-  ( Csv
++  ( CanCsv
+   , CsvError(..)
+-  , _CsvIoError
+-  , _CsvHeaderParseError
+-  , _CsvDecodeErrors
+-  , runCsv
++  , AsCsvError(_CsvError,_CsvIoError, _CsvHeaderParseError, _CsvDecodeErrors)
+   , readTransactions
+   ) where
+ 
+ import BasePrelude hiding (first, try, words)
+ 
+ import           Control.Error              (headMay, note)
+-import           Control.Lens               (makePrisms, (^.))
+-import           Control.Monad.Except       (ExceptT, MonadError, runExceptT)
++import           Control.Lens               (makeClassyPrisms, (^.),(#))
++import           Control.Monad.Error.Hoist  ((<?>),(<%?>))
++import           Control.Monad.Except       (MonadError, runExceptT)
+ import           Control.Monad.TM           ((.>>=.))
+ import           Control.Monad.Trans        (MonadIO)
+ import           Data.Bifunctor             (bimap, first)
+@@ -47,20 +47,17 @@
+   | CsvHeaderParseError String
+   | CsvDecodeErrors [String]
+   deriving (Eq,Show)
+-makePrisms ''CsvError
+-
+-newtype Csv a = Csv { unCsv :: ExceptT CsvError IO a }
+-  deriving (Functor,Applicative,Monad,MonadError CsvError,MonadIO)
++makeClassyPrisms ''CsvError
+ 
+-runCsv :: Csv a -> IO (Either CsvError a)
+-runCsv = runExceptT . unCsv
++type CanCsv e m      = ( CanCsvError e m , MonadIO m    )
++type CanCsvError e m = ( MonadError e m  , AsCsvError e )
+ 
+-readTransactions :: FilePath -> Csv Transactions
++readTransactions :: CanCsv e m => FilePath -> m Transactions
+ readTransactions fn = do
+-  lbs <- wrapException CsvIoError $ (LBS.readFile fn)
++  lbs <- wrapException (_CsvIoError #) $ (LBS.readFile fn)
+   let (headers,csvs) = splitAt 2 . LC8.lines $ lbs
+   (name,t,num) <- parseHeader headers
+-  xactsV <- throwAccValidation CsvDecodeErrors $ csvs .>>=. decodeCsvLine -- t .>>=. f is fmap fold . traverse f t
++  xactsV <- throwAccValidation (_CsvDecodeErrors #) $ csvs .>>=. decodeCsvLine -- t .>>=. f is fmap fold . traverse f t
+   pure $ Transactions name t num xactsV
+ 
+ decodeCsvLine
+@@ -71,12 +68,13 @@
+   (bimap (:[]) toList . decode NoHeader $ bs) ^._AccValidation
+ 
+ parseHeader
+-  :: (MonadError CsvError m, Applicative m)
++  :: (CanCsvError e m, Applicative m)
+   => [LBS.ByteString]
+   -> m (T.Text,T.Text,Int)
+-parseHeader hs = throwEither . first CsvHeaderParseError $ do
+-  h <- note "Header Missing" . headMay $ hs
+-  first show $ parse header (LC8.unpack h) (decodeUtf8 . LBS.toStrict $ h)
++parseHeader hs = do
++  h <- headMay hs <?> (_CsvHeaderParseError # "Header Missing")
++  let r = parse header (LC8.unpack h) (decodeUtf8 . LBS.toStrict $ h)
++  r <%?> ((_CsvHeaderParseError #) . show)
+   where
+     header = do
+       void $ string "\"Account History for Account:\",\""
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db/Account.hs code-classy/src/Db/Account.hs
+--- code/src/Db/Account.hs	2015-02-23 07:58:09.000000000 +1000
++++ code-classy/src/Db/Account.hs	2015-06-06 17:27:49.000000000 +1000
+@@ -61,27 +61,27 @@
+ accountQuery :: Query AccountColumn
+ accountQuery = queryTable accountTable
+ 
+-allAccounts :: Db [Account]
++allAccounts :: CanDb c e m => m [Account]
+ allAccounts = liftQuery accountQuery
+ 
+-getAccount :: Int -> Db (Maybe Account)
++getAccount :: CanDb c e m => Int -> m (Maybe Account)
+ getAccount i = liftQueryFirst $ proc () -> do
+   a <- accountQuery -< ()
+   restrict -< a^.accountId .== pgInt4 i
+   returnA -< a
+ 
+-findAccountByNumber :: Int -> Db (Maybe Account)
++findAccountByNumber :: CanDb c e m => Int -> m (Maybe Account)
+ findAccountByNumber n = liftQueryFirst $ proc () -> do
+   a <- accountQuery -< ()
+   restrict -< a^.accountNumber .== pgInt4 n
+   returnA -< a
+ 
+-upsertAccountByNumber :: NewAccount -> Db Int
++upsertAccountByNumber :: CanDb c e m => NewAccount -> m Int
+ upsertAccountByNumber na = do
+   a <- findAccountByNumber (na^.accountNumber)
+   maybe (insertAccount na) (pure . (^.accountId)) a
+ 
+-insertAccount :: NewAccount -> Db Int
++insertAccount :: CanDb c e m => NewAccount -> m Int
+ insertAccount = do
+   liftInsertReturningFirst accountTable (view accountId) . packNew
+ 
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db/Internal.hs code-classy/src/Db/Internal.hs
+--- code/src/Db/Internal.hs	2015-02-23 07:57:46.000000000 +1000
++++ code-classy/src/Db/Internal.hs	2015-06-06 17:09:03.000000000 +1000
+@@ -1,22 +1,27 @@
+ {-# LANGUAGE FlexibleContexts           #-}
+ {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+ {-# LANGUAGE MultiParamTypeClasses      #-}
+-{-# LANGUAGE NoImplicitPrelude          #-}
+ {-# LANGUAGE TemplateHaskell            #-}
++{-# LANGUAGE ConstraintKinds            #-}
+ module Db.Internal where
+ 
+-import BasePrelude
+-
+ import Control.Error                   (headMay)
+-import Control.Lens                    (makeLenses, makePrisms, view)
+-import Control.Monad.Except            (ExceptT, MonadError, runExceptT)
+-import Control.Monad.Reader            (MonadReader, ReaderT, runReaderT)
+-import Control.Monad.Trans             (MonadIO)
++import Control.Lens                    (makeClassy, makeClassyPrisms, view,
++                                        Prism',(#))
++import Control.Exception               (SomeException,catches)
++import Control.Exception.Lens          (exception)
++import Control.Monad.Except            (MonadError,throwError)
++import Control.Monad.Error.Lens        (handler)
++import Control.Monad.Reader            (MonadReader)
++import Control.Monad.Trans             (MonadIO,liftIO)
++import Data.Int                        (Int64)
+ import Data.Profunctor.Product.Default (Default)
+-import Database.PostgreSQL.Simple      (Connection, QueryError, SqlError, close)
++import Database.PostgreSQL.Simple      (Connection, QueryError, SqlError,
++                                        close)
+ import Opaleye                         (Column, PGBool, Query, QueryRunner,
+-                                        Table, Unpackspec, runDelete, runInsert,
+-                                        runInsertReturning, runQuery, runUpdate)
++                                        Table, Unpackspec, runDelete,
++                                        runInsert, runInsertReturning,
++                                        runQuery, runUpdate)
+ 
+ import Utils (wrapExceptions)
+ 
+@@ -24,85 +29,88 @@
+   = DbQueryError QueryError
+   | DbSqlError SqlError
+   deriving (Show)
+-makePrisms ''DbError
++makeClassyPrisms ''DbError
+ 
+ data DbEnv = DbEnv
+   { _dbEnvConnection :: Connection
+   }
+-makeLenses ''DbEnv
+-
+-newtype Db a = Db
+-  { unDb :: ExceptT DbError (ReaderT DbEnv IO) a
+-  } deriving
+-   ( Functor
+-   , Applicative
+-   , Monad
+-   , MonadReader DbEnv
+-   , MonadError DbError
+-   , MonadIO
+-   )
++makeClassy ''DbEnv
+ 
+-runDb :: DbEnv -> Db a -> IO (Either DbError a)
+-runDb e = flip runReaderT e . runExceptT . unDb
++type CanDb c e m =
++  ( ProvidesDbEnv c m
++  , CanDbError e m
++  , MonadIO m
++  )
+ 
+-closeDbEnv :: DbEnv -> IO ()
+-closeDbEnv = close . view dbEnvConnection
++type ProvidesDbEnv c m = (MonadReader c m, HasDbEnv c)
++type CanDbError e m    = (MonadError e m, AsDbError e)
+ 
+ liftQuery
+-  :: ( Default QueryRunner columnsW haskells )
++  :: ( CanDb c e m, Default QueryRunner columnsW haskells )
+   => Query columnsW
+-  -> Db [haskells]
++  -> m [haskells]
+ liftQuery q = withConnection (`runQuery` q)
+ 
+ liftQueryFirst
+-  :: ( Default QueryRunner columnsW haskells )
++  :: ( CanDb c e m, Default QueryRunner columnsW haskells )
+   => Query columnsW
+-  -> Db (Maybe haskells)
++  -> m (Maybe haskells)
+ liftQueryFirst = fmap headMay . liftQuery
+ 
+ liftInsert
+-  :: Table columnsW columnsR
++  :: CanDb c e m
++  => Table columnsW columnsR
+   -> columnsW
+-  -> Db Int64
++  -> m Int64
+ liftInsert t c = withConnection (\ con -> runInsert con t c)
+ 
+ liftInsertReturning
+-  :: ( Default QueryRunner returned haskells
+-    , Default Unpackspec returned returned
+-    )
++  :: ( CanDb c e m
++     , Default QueryRunner returned haskells
++     , Default Unpackspec returned returned
++     )
+   => Table columnsW columnsR
+   -> (columnsR -> returned)
+   -> columnsW
+-  -> Db [haskells]
++  -> m [haskells]
+ liftInsertReturning t f c = withConnection (\ con -> runInsertReturning con t c f)
+ 
+ liftInsertReturningFirst
+-  :: ( Default QueryRunner returned haskells
+-    , Default Unpackspec returned returned
+-    )
++  :: ( CanDb c e m
++     , Default QueryRunner returned haskells
++     , Default Unpackspec returned returned
++     )
+   => Table columnsW columnsR
+   -> (columnsR -> returned)
+   -> columnsW
+-  -> Db haskells
++  -> m haskells
+ liftInsertReturningFirst t f = fmap head . liftInsertReturning t f
+ 
+ liftUpdate
+-  :: Table columnsW columnsR
++  :: CanDb c e m
++  => Table columnsW columnsR
+   -> (columnsR -> columnsW)
+   -> (columnsR -> Column PGBool)
+-  -> Db Int64
++  -> m Int64
+ liftUpdate t f w = withConnection (\ con -> runUpdate con t f w)
+ 
+ liftDelete
+-  :: Table columnsW columnsR
++  :: CanDb c e m
++  => Table columnsW columnsR
+   -> (columnsR -> Column PGBool)
+-  -> Db Int64
++  -> m Int64
+ liftDelete t w = withConnection (\ con -> runDelete con t w)
+ 
+-withConnection :: (Connection -> IO a) -> Db a
++_SqlError :: Prism' SomeException SqlError
++_SqlError = exception
++
++_QueryError :: Prism' SomeException QueryError
++_QueryError = exception
++
++withConnection :: CanDb c e m => (Connection -> IO a) -> m a
+ withConnection f = do
+   c <- view dbEnvConnection
+   wrapExceptions (f c)
+-    [ Handler (pure . DbSqlError)
+-    , Handler (pure . DbQueryError)
++    [ handler _SqlError   (pure . (_DbSqlError #))
++    , handler _QueryError (pure . (_DbQueryError #))
+     ]
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db/Place.hs code-classy/src/Db/Place.hs
+--- code/src/Db/Place.hs	2015-02-23 10:35:18.000000000 +1000
++++ code-classy/src/Db/Place.hs	2015-06-06 17:29:41.000000000 +1000
+@@ -53,25 +53,25 @@
+ placeQuery :: Query PlaceColumn
+ placeQuery = queryTable placeTable
+ 
+-allPlaces :: Db [Place]
++allPlaces :: CanDb c e m => m [Place]
+ allPlaces = liftQuery placeQuery
+ 
+-insertPlace :: NewPlace -> Db Int
++insertPlace :: CanDb c e m => NewPlace -> m Int
+ insertPlace =
+   liftInsertReturningFirst placeTable (view placeId) . packNew
+ 
+-findPlaceByName :: Text -> Db (Maybe Place)
++findPlaceByName :: CanDb c e m => Text -> m (Maybe Place)
+ findPlaceByName n = liftQueryFirst $ proc () -> do
+   a <- placeQuery -< ()
+   restrict -< a^.placeName .== pgStrictText n
+   returnA -< a
+ 
+-upsertPlaceByName :: NewPlace -> Db Int
++upsertPlaceByName :: CanDb c e m => NewPlace -> m Int
+ upsertPlaceByName na = do
+   a <- findPlaceByName (na^.placeName)
+   maybe (insertPlace na) (pure . (^.placeId)) a
+ 
+-getPlace :: Int -> Db (Maybe Place)
++getPlace :: CanDb c e m => Int -> m (Maybe Place)
+ getPlace i = liftQueryFirst $ proc () -> do
+   p <- placeQuery -< ()
+   restrict -< p^.placeId .== pgInt4 i
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db/PlaceCategory.hs code-classy/src/Db/PlaceCategory.hs
+--- code/src/Db/PlaceCategory.hs	2015-02-23 08:01:11.000000000 +1000
++++ code-classy/src/Db/PlaceCategory.hs	2015-06-06 17:31:10.000000000 +1000
+@@ -48,11 +48,11 @@
+ placeCategoryQuery :: Query PlaceCategoryColumn
+ placeCategoryQuery = queryTable placeCategoryTable
+ 
+-insertPlaceCategory :: NewPlaceCategory -> Db Int
++insertPlaceCategory :: CanDb c e m => NewPlaceCategory -> m Int
+ insertPlaceCategory =
+   liftInsertReturningFirst placeCategoryTable (view placeCategoryId) . packNew
+ 
+-getPlaceCategory :: Int -> Db (Maybe PlaceCategory)
++getPlaceCategory :: CanDb c e m => Int -> m (Maybe PlaceCategory)
+ getPlaceCategory i = liftQueryFirst $ proc () -> do
+   p <- placeCategoryQuery -< ()
+   restrict -< p^.placeCategoryId .== pgInt4 i
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db/Transaction.hs code-classy/src/Db/Transaction.hs
+--- code/src/Db/Transaction.hs	2015-02-23 10:39:25.000000000 +1000
++++ code-classy/src/Db/Transaction.hs	2015-06-06 17:31:41.000000000 +1000
+@@ -79,14 +79,14 @@
+ transactionQuery :: Query TransactionColumn
+ transactionQuery = queryTable transactionTable
+ 
+-allTransactions :: Db [Transaction]
++allTransactions :: CanDb c e m => m [Transaction]
+ allTransactions = liftQuery transactionQuery
+ 
+-insertTransaction :: NewTransaction -> Db Int
++insertTransaction :: CanDb c e m => NewTransaction -> m Int
+ insertTransaction =
+   liftInsertReturningFirst transactionTable (view transactionId) . packNew
+ 
+-getTransaction :: Int -> Db (Maybe Transaction)
++getTransaction :: CanDb c e m => Int -> m (Maybe Transaction)
+ getTransaction i = liftQueryFirst $ proc () -> do
+   t <- transactionQuery -< ()
+   restrict -< t^.transactionId .== pgInt4 i
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db/TransactionAtmOperatorFee.hs code-classy/src/Db/TransactionAtmOperatorFee.hs
+--- code/src/Db/TransactionAtmOperatorFee.hs	2015-02-23 11:16:23.000000000 +1000
++++ code-classy/src/Db/TransactionAtmOperatorFee.hs	2015-06-06 17:32:14.000000000 +1000
+@@ -53,16 +53,16 @@
+ transactionAtmOperatorFeeQuery :: Query TransactionAtmOperatorFeeColumn
+ transactionAtmOperatorFeeQuery = queryTable transactionAtmOperatorFeeTable
+ 
+-allTransactionAtmOperatorFees :: Db [TransactionAtmOperatorFee]
++allTransactionAtmOperatorFees :: CanDb c e m => m [TransactionAtmOperatorFee]
+ allTransactionAtmOperatorFees = liftQuery transactionAtmOperatorFeeQuery
+ 
+-getTransactionAtmOperatorFee :: Int -> Db (Maybe TransactionAtmOperatorFee)
++getTransactionAtmOperatorFee :: CanDb c e m => Int -> m (Maybe TransactionAtmOperatorFee)
+ getTransactionAtmOperatorFee i = liftQueryFirst $ proc () -> do
+   tc <- transactionAtmOperatorFeeQuery -< ()
+   restrict -< tc^.transactionAtmOperatorFeeTransactionId .== pgInt4 i
+   returnA -< tc
+ 
+-insertTransactionAtmOperatorFee :: NewTransactionAtmOperatorFee -> Db Int
++insertTransactionAtmOperatorFee :: CanDb c e m => NewTransactionAtmOperatorFee -> m Int
+ insertTransactionAtmOperatorFee =
+   liftInsertReturningFirst transactionAtmOperatorFeeTable (view transactionAtmOperatorFeeTransactionId)
+   . packNew
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db/TransactionDirectCredit.hs code-classy/src/Db/TransactionDirectCredit.hs
+--- code/src/Db/TransactionDirectCredit.hs	2015-02-23 11:20:24.000000000 +1000
++++ code-classy/src/Db/TransactionDirectCredit.hs	2015-06-06 17:40:13.000000000 +1000
+@@ -52,16 +52,16 @@
+ transactionDirectCreditQuery :: Query TransactionDirectCreditColumn
+ transactionDirectCreditQuery = queryTable transactionDirectCreditTable
+ 
+-allTransactionDirectCredits :: Db [TransactionDirectCredit]
++allTransactionDirectCredits :: CanDb c e m => m [TransactionDirectCredit]
+ allTransactionDirectCredits = liftQuery transactionDirectCreditQuery
+ 
+-getTransactionDirectCredit :: Int -> Db (Maybe TransactionDirectCredit)
++getTransactionDirectCredit :: CanDb c e m => Int -> m (Maybe TransactionDirectCredit)
+ getTransactionDirectCredit i = liftQueryFirst $ proc () -> do
+   tc <- transactionDirectCreditQuery -< ()
+   restrict -< tc^.transactionDirectCreditTransactionId .== pgInt4 i
+   returnA -< tc
+ 
+-insertTransactionDirectCredit :: NewTransactionDirectCredit -> Db Int
++insertTransactionDirectCredit :: CanDb c e m => NewTransactionDirectCredit -> m Int
+ insertTransactionDirectCredit =
+   liftInsertReturningFirst transactionDirectCreditTable (view transactionDirectCreditTransactionId)
+   . packNew
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db/TransactionInternetTransfer.hs code-classy/src/Db/TransactionInternetTransfer.hs
+--- code/src/Db/TransactionInternetTransfer.hs	2015-02-23 11:21:04.000000000 +1000
++++ code-classy/src/Db/TransactionInternetTransfer.hs	2015-06-06 17:40:55.000000000 +1000
+@@ -58,16 +58,16 @@
+ transactionInternetTransferQuery :: Query TransactionInternetTransferColumn
+ transactionInternetTransferQuery = queryTable transactionInternetTransferTable
+ 
+-allTransactionInternetTransfers :: Db [TransactionInternetTransfer]
++allTransactionInternetTransfers :: CanDb c e m => m [TransactionInternetTransfer]
+ allTransactionInternetTransfers = liftQuery transactionInternetTransferQuery
+ 
+-getTransactionInternetTransfer :: Int -> Db (Maybe TransactionInternetTransfer)
++getTransactionInternetTransfer :: CanDb c e m => Int -> m (Maybe TransactionInternetTransfer)
+ getTransactionInternetTransfer i = liftQueryFirst $ proc () -> do
+   tc <- transactionInternetTransferQuery -< ()
+   restrict -< tc^.transactionInternetTransferTransactionId .== pgInt4 i
+   returnA -< tc
+ 
+-insertTransactionInternetTransfer :: NewTransactionInternetTransfer -> Db Int
++insertTransactionInternetTransfer :: CanDb c e m => NewTransactionInternetTransfer -> m Int
+ insertTransactionInternetTransfer =
+   liftInsertReturningFirst transactionInternetTransferTable (view transactionInternetTransferTransactionId)
+   . packNew
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db/TransactionVisa.hs code-classy/src/Db/TransactionVisa.hs
+--- code/src/Db/TransactionVisa.hs	2015-02-23 11:19:47.000000000 +1000
++++ code-classy/src/Db/TransactionVisa.hs	2015-06-06 17:41:30.000000000 +1000
+@@ -64,16 +64,16 @@
+ transactionVisaQuery :: Query TransactionVisaColumn
+ transactionVisaQuery = queryTable transactionVisaTable
+ 
+-allTransactionVisas :: Db [TransactionVisa]
++allTransactionVisas :: CanDb c e m => m [TransactionVisa]
+ allTransactionVisas = liftQuery transactionVisaQuery
+ 
+-getTransactionVisa :: Int -> Db (Maybe TransactionVisa)
++getTransactionVisa :: CanDb c e m => Int -> m (Maybe TransactionVisa)
+ getTransactionVisa i = liftQueryFirst $ proc () -> do
+   tc <- transactionVisaQuery -< ()
+   restrict -< tc^.transactionVisaTransactionId .== pgInt4 i
+   returnA -< tc
+ 
+-insertTransactionVisa :: NewTransactionVisa -> Db Int
++insertTransactionVisa :: CanDb c e m => NewTransactionVisa -> m Int
+ insertTransactionVisa =
+   liftInsertReturningFirst transactionVisaTable (view transactionVisaTransactionId)
+   . packNew
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Db.hs code-classy/src/Db.hs
+--- code/src/Db.hs	2015-06-06 11:15:21.000000000 +1000
++++ code-classy/src/Db.hs	2015-06-06 18:13:20.000000000 +1000
+@@ -22,10 +22,9 @@
+ import Data.Time
+ 
+ import           Db.Account
+-import           Db.Internal                    (Db, DbEnv (..), DbError (..),
+-                                                 closeDbEnv, dbEnvConnection,
+-                                                 liftQuery, runDb,
+-                                                 _DbQueryError, _DbSqlError)
++import           Db.Internal                    (CanDb, DbEnv (..), DbError (..),HasDbEnv(dbEnv),
++                                                 dbEnvConnection,
++                                                 AsDbError(_DbError,_DbQueryError, _DbSqlError))
+ import           Db.Place
+ import           Db.PlaceCategory
+ import           Db.Transaction
+@@ -35,7 +34,7 @@
+ import           Db.TransactionVisa
+ import qualified Types                          as T
+ 
+-insertTransactions :: T.Transactions -> Db [Int]
++insertTransactions :: CanDb c e m => T.Transactions -> m [Int]
+ insertTransactions xacts = do
+   a <- upsertAccountByNumber xactAcct
+   traverse (insertTransaction' a) $ xacts^. T.transactions
+@@ -93,7 +92,7 @@
+ transactionDescToDbType (T.AtmWithdrawal _)            = "atm_withdrawal"
+ transactionDescToDbType (T.DirectCredit _)             = "direct_credit"
+ transactionDescToDbType (T.InternetTransferCredit _)   = "internet_transfer_credit"
+-transactionDescToDbType (T.InternetTransferDebit _)   = "internet_transfer_debit"
++transactionDescToDbType (T.InternetTransferDebit _)    = "internet_transfer_debit"
+ transactionDescToDbType (T.VisaPurchase _)             = "visa"
+ transactionDescToDbType (T.EftposPurchase _)           = "eftpos"
+ transactionDescToDbType T.ForeignCurrencyConversionFee = "foreign_currency_conversion_fee"
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/src/Utils.hs code-classy/src/Utils.hs
+--- code/src/Utils.hs	2015-06-06 17:16:44.000000000 +1000
++++ code-classy/src/Utils.hs	2015-06-06 17:14:50.000000000 +1000
+@@ -3,17 +3,12 @@
+ 
+ import BasePrelude
+ 
++import Control.Monad.Error.Hoist ((<%!?>))
+ import Data.Validation (AccValidation(..))
+ import Control.Monad.Trans (MonadIO,liftIO)
+ import Control.Monad.Except (MonadError,throwError)
+ import Control.Monad.Trans.Either (EitherT,eitherT)
+ 
+-throwEither :: (Applicative m, MonadError e m) => Either e a -> m a
+-throwEither = either throwError pure
+-
+-throwEitherT :: (Applicative m, MonadError e m) => EitherT e m a -> m a
+-throwEitherT = eitherT throwError pure
+-
+ throwAccValidation :: (Applicative m, MonadError e m) => (es -> e) -> AccValidation es a -> m a
+ throwAccValidation f (AccFailure es) = throwError (f es)
+ throwAccValidation _ (AccSuccess a)  = pure a
+@@ -24,7 +19,7 @@
+   -> IO a
+   -> m a
+ wrapException f a = do
+-  liftIO (catch (fmap Right a) (pure . Left . f)) >>= throwEither
++  liftIO (catch (fmap Right a) (pure . Left . f)) <%!?> id
+ 
+ wrapExceptions
+   :: (MonadError e m,MonadIO m, Applicative m)
+@@ -32,6 +27,6 @@
+   -> [Handler e]
+   -> m a
+ wrapExceptions a hs =
+-  liftIO (catches (fmap Right a) handlers) >>= throwEither
++  liftIO (catches (fmap Right a) handlers) <%!?> id
+   where
+     handlers = fmap (fmap Left) hs
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/tests/CsvTests.hs code-classy/tests/CsvTests.hs
+--- code/tests/CsvTests.hs	2015-02-23 09:40:09.000000000 +1000
++++ code-classy/tests/CsvTests.hs	2015-06-06 18:57:05.000000000 +1000
+@@ -4,6 +4,7 @@
+ 
+ import BasePrelude
+ 
++import Control.Monad.Except (ExceptT,runExceptT)
+ import Control.Lens
+ import Data.Time
+ import Test.Tasty
+@@ -19,6 +20,9 @@
+   , testCase "DecodeOk"        decodeOkTest
+   ]
+ 
++runCsv :: ExceptT CsvError IO a -> IO (Either CsvError a)
++runCsv = runExceptT
++
+ ioExceptionTest :: Assertion
+ ioExceptionTest = do
+   e <- runCsv $ readTransactions "idontexisttrolololol"
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/tests/DbTests/Internal.hs code-classy/tests/DbTests/Internal.hs
+--- code/tests/DbTests/Internal.hs	2015-02-23 12:46:29.000000000 +1000
++++ code-classy/tests/DbTests/Internal.hs	2015-06-06 18:59:41.000000000 +1000
+@@ -1,10 +1,14 @@
+ {-# LANGUAGE NoImplicitPrelude #-}
+ {-# LANGUAGE OverloadedStrings #-}
++{-# LANGUAGE ConstraintKinds   #-}
+ module DbTests.Internal where
+ 
+ import BasePrelude
+ 
++import           Control.Lens                     ((^.))
+ import           Control.Monad.Random
++import           Control.Monad.Except             (ExceptT,runExceptT)
++import           Control.Monad.Reader             (ReaderT,runReaderT)
+ import qualified Data.ByteString                  as B
+ import qualified Data.ByteString.Char8            as B8
+ import           Database.PostgreSQL.Simple
+@@ -25,8 +29,8 @@
+ roundTripTest
+   :: (Eq a, Show a)
+   => String
+-  -> (n -> Db i)
+-  -> (i -> Db (Maybe a))
++  -> (n -> ExceptT DbError (ReaderT DbEnv IO) i)
++  -> (i -> ExceptT DbError (ReaderT DbEnv IO) (Maybe a))
+   -> (n -> i -> a)
+   -> n
+   -> Assertion
+@@ -38,6 +42,9 @@
+       pure (i,a)
+     assertDbResult res $ \ (i,a) -> Just (newToExisting new i) @=? a
+ 
++runDb :: DbEnv -> ExceptT DbError (ReaderT DbEnv IO) a -> IO (Either DbError a)
++runDb env = flip runReaderT env . runExceptT 
++
+ withDb :: String -> (DbEnv -> Assertion) -> Assertion
+ withDb testName f = do
+   pc <- connectPostgreSQL "dbname=postgres"
+@@ -59,5 +66,5 @@
+       pure (DbEnv tc)
+ 
+     cleanup pc nb tc = do
+-      closeDbEnv tc
++      close $ tc^.dbEnvConnection
+       void . execute_ pc . Query $ "DROP DATABASE " <> nb
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/tests/DbTests.hs code-classy/tests/DbTests.hs
+--- code/tests/DbTests.hs	2015-02-23 12:52:03.000000000 +1000
++++ code-classy/tests/DbTests.hs	2015-06-06 18:59:50.000000000 +1000
+@@ -4,7 +4,9 @@
+ 
+ import BasePrelude
+ 
+-import Data.Time        (fromGregorian)
++import Control.Monad.Except (ExceptT,runExceptT)
++import Control.Monad.Reader (ReaderT,runReaderT)
++import Data.Time            (fromGregorian)
+ import Test.Tasty
+ import Test.Tasty.HUnit
+ 
+diff -ur -x dist -x .cabal-sandbox -x cabal.sandbox.config code/transaction-importer.cabal code-classy/transaction-importer.cabal
+--- code/transaction-importer.cabal	2015-06-06 10:50:22.000000000 +1000
++++ code-classy/transaction-importer.cabal	2015-06-06 18:08:14.000000000 +1000
+@@ -33,6 +33,7 @@
+     , either              == 4.4.*
+     , errors              == 2.0.*
+     , exceptions          == 0.6.*
++    , hoist-error         == 0.1.*
+     , lens                == 4.11.*
+     , mtl                 == 2.2.*
+     , opaleye             == 0.3.*
+@@ -54,6 +55,7 @@
+      , base-prelude
+      , configurator         == 0.3.*
+      , errors
++     , mtl                  == 2.2.*
+      , postgresql-simple  
+      , transaction-importer
+ 
