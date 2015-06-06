@@ -30,10 +30,9 @@ import           Data.Csv                   (FromField (..), FromRecord (..),
                                              HasHeader (NoHeader), decode, (.!))
 import qualified Data.Text                  as T
 import           Data.Text.Encoding         (decodeUtf8)
-import           Data.Time                  (Day, parseTime)
+import           Data.Time                  (Day, parseTimeM,defaultTimeLocale)
 import           Data.Validation            (AccValidation, _AccValidation)
 import qualified Data.Vector                as V
-import           System.Locale              (defaultTimeLocale)
 import           Text.Parsec                (alphaNum, anyChar, char, choice,
                                              digit, lookAhead, many1, manyTill,
                                              parse, sepEndBy1, space, spaces,
@@ -176,7 +175,7 @@ instance FromField TransactionDesc where
 
 instance FromField Day where
   parseField s = maybe (fail "Invalid DD/MM/YYYY date") pure $
-    parseTime defaultTimeLocale "%d/%m/%Y" (C8.unpack s)
+    parseTimeM True defaultTimeLocale "%d/%m/%Y" (C8.unpack s)
 
 instance FromRecord Transaction where
   parseRecord v

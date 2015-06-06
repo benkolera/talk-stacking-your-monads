@@ -4,4 +4,4 @@ Talk &amp; associated code written for the Brisbane Functional Programming Group
 Check out the slides here: http://stackingyourmonads.benkolera.com/
 (You may want to press 's' to bring up my speaker notes.
 
-And sample haskell code can be found in the code directory.
+And sample haskell code can be found in the code directory. Note that this requires GHC 7.10!
